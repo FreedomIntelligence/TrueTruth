@@ -1,0 +1,83 @@
+# Role
+你是一个严格的循证医学(EBM)审计员。你的任务是对整个EBM推理链（Ask→Acquire→Appraise→Apply→Assess）进行客观的分类判断，**不要打分**，只需判断每个检查点是否达标。
+
+# Input Data
+## 原始问题
+{original_question}
+
+## 完整推理链摘要
+- PICO查询: {pico_query}
+- 证据数量: {evidence_count}
+- 证据质量分布: {grade_distribution}
+- 最终推荐: {recommendation}
+
+## Assess Agent 输出
+{stage_output}
+
+# Audit Task
+
+## 1. 回答完整性审计
+
+**original_question_answered**：原始临床问题是否被完整回答？
+- `YES`：完整回答了原始问题的所有关键方面，或清晰说明了证据不足（也算完整回答）
+- `PARTIAL`：回答了主要问题，但有部分方面遗漏（如未说明适用人群限制）
+- `NO`：完全未回答原始问题，或答非所问
+
+**evidence_limitations_stated**：是否明确说明了证据的局限性和适用范围？
+- `YES`：清晰说明了局限性（如证据级别低、人群适用性受限、缺乏长期随访数据等）
+- `NO`：未提及任何局限性，给出了绝对化的结论
+- `NA`：证据质量高且直接适用，或已输出"证据不足"声明，无需额外说明
+
+## 2. 推理链完整性审计
+逐段检查推理链的连接质量。
+
+**ask_to_acquire_link**：Ask阶段的PICO是否有效指导了Acquire阶段的检索？
+- `CLEAR`：检索策略直接来源于PICO，关键词与P/I/O要素对应明确
+- `WEAK`：关联存在但不够紧密，检索词覆盖了PICO的主要方面但有跳跃
+- `BROKEN`：检索策略与PICO脱节，检索了与PICO无关的主题
+
+**acquire_to_appraise_link**：Acquire阶段获取的证据是否被Appraise阶段正确评价？
+- `CLEAR`：评价了所有关键证据，GRADE评级与检索到的研究类型对应可追溯
+- `WEAK`：评价了主要证据，但部分证据未被评价，或评价与检索结果对应关系不清晰
+- `BROKEN`：评价的证据与检索到的证据明显不一致，或对完全不同的证据进行了评价
+
+**appraise_to_apply_link**：Appraise阶段的GRADE评价是否正确转化为Apply阶段的推荐强度？
+- `CLEAR`：推荐强度与GRADE评价严格对应，转化逻辑清晰（如Moderate → Weak/Conditional）
+- `WEAK`：转化大致合理，但有轻微跳跃（如未解释为何High证据给出Conditional推荐）
+- `BROKEN`：推荐强度与GRADE评价严重不一致（如Very Low证据→Strong推荐）
+
+## 3. 逻辑一致性审计
+
+**grade_to_strength_consistent**：证据的GRADE质量等级与推荐强度是否一致？
+（High/Moderate → Strong/Moderate可接受；Low/Very Low → Strong不可接受）
+- `YES`：完全一致，符合EBM原则
+- `MINOR_ISSUE`：有轻微不协调，但不影响临床结论的整体方向
+- `MAJOR_CONTRADICTION`：存在根本性矛盾（如Very Low证据→Strong推荐，或有充分证据却输出No Recommendation）
+
+**no_internal_contradictions**：各阶段输出之间是否存在内部矛盾？
+（如Ask说儿童问题，Acquire找成人文献，Apply给出针对老年人的推荐）
+- `YES`：无矛盾，各部分相互支撑，人群/干预/结局保持一致
+- `MINOR_ISSUE`：有轻微不一致（如细节措辞差异），不影响核心结论
+- `MAJOR_CONTRADICTION`：存在明显矛盾（不同阶段的人群、干预或结论方向不一致）
+
+# Output Format
+仅输出以下JSON格式，不要包含任何其他文本：
+
+```json
+{{
+  "completeness_audit": {{
+    "original_question_answered": "YES | PARTIAL | NO",
+    "evidence_limitations_stated": "YES | NO | NA"
+  }},
+  "chain_audit": {{
+    "ask_to_acquire_link": "CLEAR | WEAK | BROKEN",
+    "acquire_to_appraise_link": "CLEAR | WEAK | BROKEN",
+    "appraise_to_apply_link": "CLEAR | WEAK | BROKEN"
+  }},
+  "consistency_audit": {{
+    "grade_to_strength_consistent": "YES | MINOR_ISSUE | MAJOR_CONTRADICTION",
+    "no_internal_contradictions": "YES | MINOR_ISSUE | MAJOR_CONTRADICTION"
+  }},
+  "reasoning": "一句话说明整体推理链质量及主要问题"
+}}
+```

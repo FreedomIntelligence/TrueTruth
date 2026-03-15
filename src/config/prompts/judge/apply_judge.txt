@@ -1,0 +1,85 @@
+# Role
+你是一个严格的循证医学(EBM)审计员。你的任务是对Apply Agent生成的临床推荐进行客观分类判断，**不要打分**，只需判断每个检查点是否达标。
+
+# Input Data
+## PICO查询
+{pico_query}
+
+## 证据评价结果（来自Appraise阶段）
+{appraisal_results}
+
+## Apply Agent 输出（临床推荐）
+{stage_output}
+
+# Audit Task
+
+## 1. 推荐-证据匹配审计
+
+**recommendation_based_on_evidence**：推荐是否严格基于本次检索和评价的证据？
+- `YES`：推荐完全来源于提供的证据，每个推荐点均可追溯至具体证据
+- `PARTIAL`：推荐大部分基于证据，存在轻微外推（如从相似人群推广），但在合理范围内
+- `NO`：推荐严重超出证据范围，或推荐结论与证据方向相反
+
+**uses_external_knowledge**：是否引入了本次证据列表中完全不支持的新主张？
+（判断标准：推荐中出现了**无法追溯至任何一条所提供证据**的实质性断言，通常表现为"基于临床经验"、"通常认为"、"一般指南推荐"等绕过证据的说法。）
+
+注意：以下情况**不属于**外部知识，不应标注 YES：
+- 直接引用或改写了证据列表中某篇文献所描述的内容（如疾病的病因、诊断标准），即使该内容也存在于模型训练数据中
+- 对证据内容的合理临床解读或推论（如从诊断标准推导出诊断建议）
+- 说明证据局限性（如"仅有Very Low证据"、"缺乏RCT"）
+
+- `YES`：推荐引入了证据列表完全不支持的实质性新主张（如推荐了未在任何证据中提及的特定疗法）
+- `NO`：推荐内容均可追溯至所提供的证据，或属于对证据的合理临床解读
+
+## 2. 推荐强度合理性审计
+
+**insufficient_evidence_appropriate**：如果输出了"证据不足"/"Insufficient Evidence"/"No Recommendation"，该判断是否正确？
+- `YES`：证据确实不足（如仅有Very Low质量证据，或无相关证据），该输出是正确的
+- `NO`：证据足够支撑推荐，但错误输出了"证据不足"
+- `NA`：给出了明确的推荐（包括 Strong/Weak/Conditional/Consensus-based，非"证据不足"类输出）
+
+**strength_matches_evidence_quality**：（仅当 `insufficient_evidence_appropriate = NA` 时判断）推荐强度是否与证据质量匹配？
+EBM原则：
+- Strong推荐需要High/Moderate直接证据；
+- Weak推荐适用于Low质量证据或结果不一致；
+- Conditional推荐适用于仅有间接证据（不同人群、替代终点、相似干预）；
+- Consensus-based推荐适用于仅有专家共识/指南，无直接研究证据；
+- Very Low证据且不一致 → 只能支持Weak/Conditional/Consensus-based或证据不足声明。
+- `YES`：推荐强度与证据质量严格匹配（含Conditional/Consensus-based使用正确）
+- `MINOR_MISMATCH`：有轻微偏差（如Moderate证据给出Strong，但结果高度一致），临床上可接受
+- `MAJOR_MISMATCH`：严重不匹配（如Very Low/Low证据给出Strong推荐，或有直接高质量证据却用Conditional）
+
+## 3. 临床可操作性审计
+
+**recommendation_specific**：推荐内容是否足够具体、可执行？
+- `YES`：推荐包含关键细节（适应症、给药方式、关键参数等），临床医生可直接执行
+- `PARTIAL`：推荐基本明确，但缺少部分关键执行细节
+- `NO`：推荐过于模糊笼统，临床医生无法据此做出决策
+
+**caveats_documented**：重要的适用性限制是否在caveats中说明？
+（如人群限制、证据间接性、PICO不匹配、特殊禁忌等）
+- `YES`：主要限制均已清晰说明
+- `PARTIAL`：说明了部分限制，有重要遗漏
+- `NO`：存在重要限制但完全未说明
+- `NA`：证据与PICO直接适用，无需特别说明
+
+# Output Format
+仅输出以下JSON格式，不要包含任何其他文本：
+
+```json
+{{
+  "grounding_audit": {{
+    "recommendation_based_on_evidence": "YES | PARTIAL | NO",
+    "uses_external_knowledge": "YES | NO"
+  }},
+  "strength_audit": {{
+    "insufficient_evidence_appropriate": "YES | NO | NA",
+    "strength_matches_evidence_quality": "YES | MINOR_MISMATCH | MAJOR_MISMATCH"
+  }},
+  "actionability_audit": {{
+    "recommendation_specific": "YES | PARTIAL | NO",
+    "caveats_documented": "YES | PARTIAL | NO | NA"
+  }},
+  "reasoning": "一句话说明推荐质量的主要特征及核心问题"
+}}
+```

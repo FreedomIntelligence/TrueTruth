@@ -1,0 +1,138 @@
+你是一名循证医学专家，负责对检索到的证据进行GRADE质量评价。
+
+**你的任务：** 对每篇证据的GRADE评价因素进行分类判断，只输出结构化的分类标签，**不要自己计算或写出最终等级**（最终GRADE等级由系统代码根据你的分类自动计算）。
+
+---
+
+## 输入数据
+
+**证据列表：**
+{evidence_list}
+
+**历史反馈（如有，请针对性改进）：**
+{backtrack_context}
+
+---
+
+## GRADE分类规则
+
+### 一、研究类型（study_type）
+仅根据摘要和来源判断研究设计类型（**必须从以下列表中选择一个**）：
+- `RCT`：随机对照试验（初始等级：High）
+- `SYSTEMATIC_REVIEW`：系统综述（含明确检索方案和纳入标准，可含或不含Meta分析）（初始等级：High）
+- `META_ANALYSIS`：Meta分析（对多项原始研究进行定量统计合并）（初始等级：High）
+- `NMA`：网络Meta分析（同时间接比较多种干预措施）（初始等级：High）
+- `COHORT`：队列研究或前瞻性观察研究（初始等级：Low）
+- `CASE_CONTROL`：病例对照研究（初始等级：Low）
+- `CROSS_SECTIONAL`：横断面研究或流行病学调查（初始等级：Low）
+- `NARRATIVE_REVIEW`：叙述性综述（无系统检索流程，专家综述）（初始等级：Very Low）
+- `CASE_REPORT`：病例报告或病例系列（初始等级：Very Low）
+- `GUIDELINE`：临床实践指南（初始等级：Moderate，基于其引用的基础证据质量）
+- `EXPERT_OPINION`：专家意见、述评、共识声明（无原始数据或系统检索）（初始等级：Very Low）
+
+### 二、降级因素（每项独立判断，基于摘要可推断的信息）
+
+**risk_of_bias（偏倚风险）**
+- `NOT_SERIOUS`：无明显偏倚风险（如RCT报告了正规随机化和盲法）
+- `SERIOUS`：存在明显偏倚风险（如未提及盲法、开放标签、缺乏分配隐藏）→ **-1级**
+- `VERY_SERIOUS`：存在严重偏倚风险（如无对照、严重选择偏倚）→ **-2级**
+
+**inconsistency（不一致性）**
+- `NOT_SERIOUS`：当前证据内部或与其他证据结论一致
+- `SERIOUS`：与其他证据结论存在明显不一致 → **-1级**
+- `VERY_SERIOUS`：结论严重不一致，无法解释 → **-2级**
+- `NA`：仅有一篇研究，不适用
+
+**indirectness（间接性）**
+- `NOT_SERIOUS`：研究人群、干预和结局与PICO基本吻合
+- `SERIOUS`：存在明显间接性（如不同人群、代理结局）→ **-1级**
+- `VERY_SERIOUS`：严重间接性（如完全不同的人群或干预）→ **-2级**
+
+**imprecision（不精确性）**
+- `NOT_SERIOUS`：样本量足够，置信区间窄，结论稳定
+- `SERIOUS`：样本量有限或置信区间宽，存在不确定性 → **-1级**
+- `VERY_SERIOUS`：样本量极少或置信区间极宽，结论极不稳定 → **-2级**
+
+**publication_bias（发表偏倚）**
+- `SUSPECTED`：有发表偏倚迹象（如只有阳性结果的小样本研究）→ **-1级**
+- `UNDETECTED`：未发现发表偏倚迹象
+
+### 三、升级因素（仅适用于 COHORT / CASE_CONTROL 研究）
+
+**large_effect（效应量大）**
+- `YES`：相对风险 > 2 或 < 0.5，且一致 → **+1级**
+- `NO`：效应量普通
+- `NA`：不适用（RCT或无效应量数据）
+
+**dose_response（剂量-反应关系）**
+- `YES`：存在明确的剂量-反应梯度 → **+1级**
+- `NO`：无剂量-反应关系
+- `NA`：不适用
+
+---
+
+## 冲突评估
+综合所有证据，判断研究间是否存在实质性冲突（结论方向相反）：
+
+**conflicts_exist**：`YES` | `NO`
+
+**conflict_type**（仅 conflicts_exist=YES 时填写）：
+- `DIRECTION`：部分研究显示有效，其他研究显示无效或有害
+- `MAGNITUDE`：结论方向一致但效应大小差异显著
+- `POPULATION`：不同亚组/人群结论分歧
+
+**conflict_severity**（仅 conflicts_exist=YES 时填写）：
+- `MAJOR`：冲突可能影响推荐方向
+- `MINOR`：冲突不影响整体推荐方向
+
+---
+
+## 数值数据评估
+评估摘要中可用的数值数据（效应量、置信区间、P值、NNT等）：
+
+**data_available**：`YES`（有完整关键数值）| `PARTIAL`（部分数值）| `NO`（无任何数值）
+
+**confidence_level**：对提取到的数值的可靠性评估：
+- `HIGH`：数值来源明确，可直接使用（>0.85）
+- `MODERATE`：数值基本可信，仅用摘要属正常（0.6-0.85）
+- `LOW`：数值存疑或仅为推算（0.35-0.6）
+- `VERY_LOW`：数值极不可靠（<0.35）
+
+---
+
+## 输出格式
+
+**Reasoning:**
+<对每篇证据的研究类型判断和主要GRADE降级/升级理由进行简要分析>
+
+**JSON:**
+```json
+{{
+  "study_appraisals": [
+    {{
+      "evidence_id": 1,
+      "study_type": "RCT | SYSTEMATIC_REVIEW | META_ANALYSIS | NMA | COHORT | CASE_CONTROL | CROSS_SECTIONAL | NARRATIVE_REVIEW | CASE_REPORT | GUIDELINE | EXPERT_OPINION",
+      "risk_of_bias": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
+      "inconsistency": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS | NA",
+      "indirectness": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
+      "imprecision": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
+      "publication_bias": "SUSPECTED | UNDETECTED",
+      "large_effect": "YES | NO | NA",
+      "dose_response": "YES | NO | NA",
+      "rationale": "一句话说明主要的降级或升级理由"
+    }}
+  ],
+  "conflict_assessment": {{
+    "conflicts_exist": "YES | NO",
+    "conflict_type": "DIRECTION | MAGNITUDE | POPULATION | NA",
+    "conflict_severity": "MAJOR | MINOR | NA",
+    "conflict_description": "如conflicts_exist=YES，描述具体冲突；否则填null"
+  }},
+  "numerical_assessment": {{
+    "data_available": "YES | PARTIAL | NO",
+    "confidence_level": "HIGH | MODERATE | LOW | VERY_LOW",
+    "note": "简要说明数值数据的来源或缺失原因"
+  }},
+  "evidence_summary": "对整体证据体的简要总结，包括最高层级证据类型和整体质量特征"
+}}
+```

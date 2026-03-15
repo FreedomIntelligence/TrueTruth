@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.env.example
+*.db
+data/
+.pytest_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+# Project-specific exclusions
+patient_profile/
+logs/
+.claude/
+gemini文本生图.py
+nul
+QUICKSTART.md
