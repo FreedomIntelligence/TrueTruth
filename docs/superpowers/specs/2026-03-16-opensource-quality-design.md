@@ -37,12 +37,12 @@ The project has a complete, working implementation but lacks the scaffolding exp
   ```
 - **Why two steps in this order:** If `.gitignore` is edited first, git immediately sees the file with real credentials as untracked and an accidental `git add .` would stage them. Always sanitise content first.
 
-### 3. `.gitignore` — tighten (second edit, separate from step 2 above)
-- **Action:** In the same edit where `.env.example` is removed from ignore:
+### 3. `.gitignore` — tighten (combined with step 2 above, single edit)
+- **Action:** In a single `.gitignore` edit (combined with step 2):
   - Remove: `.env.example` line
+  - Remove: `QUICKSTART.md` line (see item 3b below)
   - Add: `*.log` (not already present)
   - Skip `nul` — it is already present on line 18; do not add a duplicate
-  - Remove: `QUICKSTART.md` line (see item 3b below)
 - **Note:** `COMPLETION_SUMMARY.md`, `IMPLEMENTATION_STATUS.md`, `description.md` are handled in P2; add them to `.gitignore` only if they are NOT moved to `docs/internal/`
 
 ### 3b. `QUICKSTART.md` — unblock
@@ -117,7 +117,7 @@ The project has a complete, working implementation but lacks the scaffolding exp
 |------|--------|
 | `LICENSE` | **Create** |
 | `.env.example` | **Edit** (overwrite with placeholders — must precede .gitignore edit) |
-| `.gitignore` | **Edit** (remove `.env.example` line; add `*.log`, `nul`) |
+| `.gitignore` | **Edit** (remove `.env.example` and `QUICKSTART.md` lines; add `*.log`) |
 | `requirements-dev.txt` | **Create** (lightweight deps for CI) |
 | `.github/workflows/ci.yml` | **Create** |
 | `.github/ISSUE_TEMPLATE/bug_report.md` | **Create** |
