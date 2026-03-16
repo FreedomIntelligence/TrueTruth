@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-16
 **Scope:** Additive-only changes (zero modifications to existing `src/` code)
-**Constraint:** Every change in this spec must be a new file or a non-breaking edit to a config file.
+**Constraint:** Every change in this spec must be a new file, a non-breaking edit to a config file, or a git-tracked file move that is explicitly documented together with any README/link impact.
 
 ---
 
@@ -23,9 +23,11 @@ The project has a complete, working implementation but lacks the scaffolding exp
 - **Content:** Year 2026, placeholder `<author>`
 - **Why:** README declares MIT but there is no LICENSE file; legally all rights are reserved without it
 
-### 2. `.env.example` — fix and unblock
-- **Action:** Create a clean `/data/wuyuang/ebm5a/.env.example` with all values replaced by descriptive placeholders; remove `.env.example` from `.gitignore`
-- **Content:**
+### 2. `.env.example` — sanitise then unblock
+- **Action:** Two-step operation, ORDER IS CRITICAL:
+  1. **Step 1 — Overwrite content first:** Replace the existing `.env.example` with placeholder-only content (see below). This must happen before any `.gitignore` change.
+  2. **Step 2 — Remove from `.gitignore`:** Only after the file contains no real credentials, remove the `.env.example` line from `.gitignore` so the sanitised template enters version control.
+- **Placeholder content:**
   ```dotenv
   LLM_BASE_URL=https://api.openai.com/v1
   LLM_API_KEY=your_api_key_here
@@ -33,13 +35,11 @@ The project has a complete, working implementation but lacks the scaffolding exp
   PUBMED_EMAIL=your_email@example.com
   # FAST_LLM_MODEL=gpt-3.5-turbo
   ```
-- **Why:** Current file contains real credentials; it is also gitignored, so cloners get no template
+- **Why two steps in this order:** If `.gitignore` is edited first, git immediately sees the file with real credentials as untracked and an accidental `git add .` would stage them. Always sanitise content first.
 
-### 3. `.gitignore` — tighten
-- **Action:** Edit `.gitignore` to:
-  - Remove the `.env.example` line (it should be tracked)
-  - Add `*.log`, `nul`, `COMPLETION_SUMMARY.md`, `IMPLEMENTATION_STATUS.md` to keep root clean going forward
-- **Note:** Does NOT delete existing files; only prevents future noise
+### 3. `.gitignore` — tighten (second edit, separate from step 2 above)
+- **Action:** In the same edit where `.env.example` is removed from ignore, also add: `*.log`, `nul`
+- **Note:** `COMPLETION_SUMMARY.md`, `IMPLEMENTATION_STATUS.md`, `description.md` are handled in P2; add them to `.gitignore` only if they are NOT moved to `docs/internal/`
 
 ---
 
@@ -47,9 +47,11 @@ The project has a complete, working implementation but lacks the scaffolding exp
 
 ### 4. GitHub Actions CI — `.github/workflows/ci.yml`
 - **Trigger:** `push` and `pull_request` on `main`
-- **Jobs:** `lint` (flake8, optional), `test` (pytest with `--tb=short`)
-- **Python version:** 3.10
-- **Why:** Even with zero tests today, the workflow infrastructure is in place; contributors see a green/red badge
+- **Dependency strategy:** `torch` and `transformers` are heavy (~2–3 GB) and have no unit tests against them in this repo. The CI job installs from a separate `requirements-dev.txt` (created as part of this change) that contains only lightweight test/lint dependencies, NOT torch/transformers. This avoids runner timeouts and cache bloat.
+- **`requirements-dev.txt` content:** `langchain==0.1.0`, `langchain-openai==0.0.5`, `langgraph==0.0.20`, `requests==2.31.0`, `pytest==7.4.3`, `pytest-cov==4.1.0`, `pytest-mock==3.12.0`, `python-dotenv==1.0.0`
+- **Jobs:** `test` (pytest with `--tb=short`, using `requirements-dev.txt`)
+- **Python version matrix:** 3.10
+- **Why:** Even with zero tests today, the CI scaffold is in place; contributors see a badge and the framework runs on PRs
 
 ### 5. Issue Templates — `.github/ISSUE_TEMPLATE/`
 - `bug_report.md` — fields: description, steps to reproduce, expected vs actual, environment (Python version, LLM provider, OS)
@@ -59,7 +61,7 @@ The project has a complete, working implementation but lacks the scaffolding exp
 - Sections: Summary, Type of change (bug fix / feature / docs), Testing done, Checklist
 
 ### 7. `CONTRIBUTING.md`
-- Sections: Prerequisites, Local setup, Running tests (`pytest`), Code style, Commit conventions, PR process
+- Sections: Prerequisites, Local setup (`pip install -r requirements.txt` for full; `requirements-dev.txt` for test-only), Running tests (`pytest`), Code style, Commit conventions, PR process
 - Links back to README for project overview
 
 ---
@@ -68,15 +70,26 @@ The project has a complete, working implementation but lacks the scaffolding exp
 
 ### 8. `pyproject.toml`
 - **Action:** Create `/pyproject.toml` alongside existing `requirements.txt` (does not replace it)
-- **Content:** `[project]` metadata (name, version, description, Python ≥3.10, dependencies mirroring requirements.txt), `[build-system]` using setuptools
-- **Why:** Enables `pip install -e .` for local dev; makes the project importable as a package without sys.path hacks
+- **Content:** `[project]` metadata (name `ebm5a`, version `0.1.0`, description, Python ≥3.10, dependencies mirroring requirements.txt), `[build-system]` using `setuptools`
+- **Why:** Enables `pip install -e .` for local dev; makes the project importable without sys.path hacks
 
 ### 9. Reorganise `docs/`
-- **Action:** Create `docs/internal/` and move internal dev artifacts there
-- **Files to move:** `docs/acquire_agent_fix.md`, `docs/mvp_implementation_complete.md`, `docs/analysis/`, `docs/plans/`
-- **New file:** `docs/architecture.md` — a real public-facing architecture overview (stub that links to README sections)
-- **Root files to move:** `COMPLETION_SUMMARY.md`, `IMPLEMENTATION_STATUS.md`, `description.md` → `docs/internal/`
-- **Why:** `docs/` currently contains only internal working notes; README references `docs/` as if it has user-facing content
+- **Scope:** Internal working-note files are moved to `docs/internal/`. `docs/superpowers/` (this spec and future specs) is explicitly **out of scope** — it is not an internal dev artifact but a design record that should remain in `docs/`.
+- **Files to move via `git mv`:**
+  - `docs/acquire_agent_fix.md` → `docs/internal/acquire_agent_fix.md`
+  - `docs/mvp_implementation_complete.md` → `docs/internal/mvp_implementation_complete.md`
+  - `docs/analysis/` → `docs/internal/analysis/`
+  - `docs/plans/` → `docs/internal/plans/`
+- **Root files to move via `git mv`:**
+  - `COMPLETION_SUMMARY.md` → `docs/internal/COMPLETION_SUMMARY.md`
+  - `IMPLEMENTATION_STATUS.md` → `docs/internal/IMPLEMENTATION_STATUS.md`
+  - `description.md` → `docs/internal/description.md`
+- **README impact:** README references `docs/` in the Documentation table as "Architecture design". After the move, `docs/` will contain `docs/internal/`, `docs/superpowers/`, and the new `docs/architecture.md` stub. The README link still resolves to a valid directory. The README Documentation table must be updated to add a row for `docs/internal/` ("Internal development notes") to reflect the new structure. This README edit is included in the file change summary below.
+
+### 10. `docs/architecture.md` (stub)
+- **Action:** Create `docs/architecture.md` as a minimal public-facing architecture overview
+- **Content:** One-paragraph summary + links to the relevant README sections (How It Works, Project Structure)
+- **Why:** README's Documentation table promises an architecture doc at `docs/`; this fulfils that promise
 
 ---
 
@@ -85,6 +98,7 @@ The project has a complete, working implementation but lacks the scaffolding exp
 - Any changes to `src/` (agents, coordinator, tools, config, state)
 - Any changes to `requirements.txt` pinned versions (dependency upgrade is a separate decision)
 - Adding actual test cases (CI scaffold only; tests are left for a future iteration)
+- Moving `docs/superpowers/` (this is a design record, not an internal dev artifact)
 
 ---
 
@@ -92,19 +106,25 @@ The project has a complete, working implementation but lacks the scaffolding exp
 
 | File | Action |
 |------|--------|
-| `LICENSE` | Create |
-| `.env.example` | Create (placeholder values) |
-| `.gitignore` | Edit (remove `.env.example` line, add noise patterns) |
-| `.github/workflows/ci.yml` | Create |
-| `.github/ISSUE_TEMPLATE/bug_report.md` | Create |
-| `.github/ISSUE_TEMPLATE/feature_request.md` | Create |
-| `.github/PULL_REQUEST_TEMPLATE.md` | Create |
-| `CONTRIBUTING.md` | Create |
-| `pyproject.toml` | Create |
-| `docs/internal/` | Create dir; move internal docs |
-| `docs/architecture.md` | Create (stub) |
-| `COMPLETION_SUMMARY.md` → `docs/internal/` | Move |
-| `IMPLEMENTATION_STATUS.md` → `docs/internal/` | Move |
-| `description.md` → `docs/internal/` | Move |
+| `LICENSE` | **Create** |
+| `.env.example` | **Edit** (overwrite with placeholders — must precede .gitignore edit) |
+| `.gitignore` | **Edit** (remove `.env.example` line; add `*.log`, `nul`) |
+| `requirements-dev.txt` | **Create** (lightweight deps for CI) |
+| `.github/workflows/ci.yml` | **Create** |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | **Create** |
+| `.github/ISSUE_TEMPLATE/feature_request.md` | **Create** |
+| `.github/PULL_REQUEST_TEMPLATE.md` | **Create** |
+| `CONTRIBUTING.md` | **Create** |
+| `pyproject.toml` | **Create** |
+| `docs/architecture.md` | **Create** (stub) |
+| `docs/internal/` | **Create dir** |
+| `docs/acquire_agent_fix.md` | **Move** → `docs/internal/` |
+| `docs/mvp_implementation_complete.md` | **Move** → `docs/internal/` |
+| `docs/analysis/` | **Move** → `docs/internal/analysis/` |
+| `docs/plans/` | **Move** → `docs/internal/plans/` |
+| `COMPLETION_SUMMARY.md` | **Move** → `docs/internal/` |
+| `IMPLEMENTATION_STATUS.md` | **Move** → `docs/internal/` |
+| `description.md` | **Move** → `docs/internal/` |
+| `README.md` | **Edit** (update Documentation table to include `docs/internal/` row) |
 
-**Total: 9 new files, 1 edited file, 3 files moved. Zero `src/` changes.**
+**Total: 10 new files, 3 edited files, 7 items moved. Zero `src/` changes.**
