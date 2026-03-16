@@ -1,244 +1,598 @@
-# EBM 5A 循证医学临床决策支持系统
+<div align="center">
 
-基于 ReAct 模式、实现循证医学"5A"框架（Ask-Acquire-Appraise-Apply-Assess）的多智能体临床决策支持系统。
+# EBM 5A
 
----
+**Evidence-Based Medicine Clinical Decision Support System**
+**循证医学临床决策支持系统**
 
-## 系统概述
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![LangChain](https://img.shields.io/badge/LangChain-0.1.0-green.svg)](https://python.langchain.com/)
+[![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20Compatible-412991.svg)](https://platform.openai.com/)
+[![PubMed](https://img.shields.io/badge/data-PubMed%20Real--time-326599.svg)](https://pubmed.ncbi.nlm.nih.gov/)
 
-### 为什么需要这个系统？
+[English](#english) · [中文](#chinese)
 
-通用大语言模型（LLM）在临床决策辅助中存在两个根本性缺陷：
-
-1. **时效性问题**：训练数据有截止日期，无法获取最新 RCT、系统综述和 Meta 分析
-2. **可信度问题**：可能产生文献"幻觉"（错误的作者、期刊、药物名称），且推理过程不透明
-
-EBM 5A 系统通过将循证医学方法论（PICO 结构化 → 实时文献检索 → GRADE 证据分级 → 推荐生成 → 质量评估）落地为自动化流水线，弥补上述缺陷。
-
-### 核心价值
-
-- **实时检索**：通过 PubMed API 获取最新文献，突破 LLM 知识截止日期限制
-- **可追溯推荐**：每一步均有评分记录、问题清单和决策理由，非黑盒输出
-- **标准化证据分级**：采用国际通用 GRADE 框架，推荐强度与证据质量硬性绑定
-- **内置质量控制**：Judge LLM 评价每阶段输出，Scheduling LLM 自动检测并修正质量问题
+</div>
 
 ---
 
-## 5A 工作流程
+> [!CAUTION]
+> **FOR RESEARCH AND EDUCATIONAL USE ONLY — NOT A MEDICAL DEVICE**
+>
+> EBM 5A is an experimental research tool. It has **not** been approved, cleared, or certified as a medical device by the FDA, CE mark, NMPA, or any other regulatory authority.
+>
+> - Outputs of this system are **not** a substitute for the clinical judgment of a licensed healthcare professional.
+> - All recommendations must be **independently reviewed and validated** by a qualified clinician before any clinical decision is made.
+> - The authors and contributors accept **no liability** for any patient harm or adverse outcome arising from clinical decisions made based on this system's output.
+> - This system is **not** intended for use in emergency situations or for direct patient care without appropriate professional oversight.
+> - Evidence retrieval and appraisal may be incomplete, outdated, or contain errors.
+>
+> By using this software, you agree that you are solely responsible for any clinical decisions and their outcomes.
+
+> [!CAUTION]
+> **仅供科研与教育用途——本系统不是医疗器械**
+>
+> EBM 5A 是一个实验性研究工具，**未经** FDA、CE、国家药品监督管理局（NMPA）或任何其他监管机构批准、许可或认证为医疗器械。
+>
+> - 本系统的输出**不能**替代持证医疗专业人员的临床判断。
+> - 任何推荐建议在用于临床决策前，**必须**由具备资质的临床医生独立审查和验证。
+> - 作者及贡献者对因依赖本系统输出而做出的临床决策所导致的任何患者伤害或不良后果**不承担任何责任**。
+> - 本系统**不适用**于急诊场景或无专业人员监督下的直接患者诊疗。
+> - 文献检索与证据评价结果可能不完整、已过时或包含错误。
+>
+> 使用本软件即表示您同意，您对所有临床决策及其后果承担全部责任。
+
+---
+
+<a id="english"></a>
+
+## English
+
+### What is EBM 5A?
+
+EBM 5A is a **multi-agent pipeline** that turns a plain-text clinical question into a graded, evidence-backed recommendation — fully automatically, in under 10 minutes.
+
+It operationalises the international **Evidence-Based Medicine 5A framework** (Ask → Acquire → Appraise → Apply → Assess) using a **ReAct** control loop: each stage is scored by a Judge LLM and routed by a Scheduling LLM, so quality failures are caught and corrected before the answer reaches you.
+
+### The Trust Problem in Medical AI
+
+*"Is this recommendation actually based on solid evidence — or is the AI just confident?"*
+
+This is the question that blocks adoption of AI in clinical settings. A clinician cannot act on a recommendation they cannot verify. **Confidence without verifiability is not trust.**
+
+EBM 5A is designed on one principle: trust must be earned through transparency, not claimed through authority. Every output is independently verifiable:
+
+| What you need to verify | How EBM 5A lets you verify it |
+|-------------------------|-------------------------------|
+| Are the cited papers real? | Every citation carries a real PMID — look it up directly in PubMed |
+| Is the evidence quality rating correct? | GRADE level is computed by deterministic Python code from LLM classification labels — the logic is inspectable |
+| How did the system reach this conclusion? | Full audit trail: per-stage scores (0–1), issue lists, all backtrack events, all scheduling decisions |
+| What if the evidence is weak or absent? | System returns explicit `Insufficient Evidence` — it will not force a recommendation |
+| Was the output quality-checked? | Judge LLM scores every stage; system retries or backtracks until quality threshold is met |
+| Can the code itself be audited? | Fully open source — every prompt, every scoring rule, every agent is readable |
+
+---
+
+### EBM 5A vs. OpenEvidence
+
+[OpenEvidence](https://www.openevidence.com/) is a widely-adopted clinical AI platform serving over 40% of US physicians. Both systems aim to give clinicians evidence-backed answers at the point of care. The approaches differ substantially:
+
+| Dimension | OpenEvidence | EBM 5A |
+|-----------|-------------|--------|
+| **Evidence appraisal** | Provides citations; no formal appraisal of evidence quality | Applies GRADE framework to each retrieved article; GRADE level computed deterministically by code |
+| **When evidence is weak** | Generates an answer regardless of evidence strength | Returns explicit `Insufficient Evidence` — refuses to force a recommendation when evidence does not support one |
+| **Output process** | Single-shot generation | Iterative ReAct loop: Judge LLM scores each stage; Scheduling LLM retries or backtracks until quality threshold is met |
+| **Reasoning transparency** | Black-box; internal logic not auditable | Full audit trail: every stage score, every identified issue, every backtrack event, every scheduling decision |
+| **Literature access** | Curated corpus via editorial agreements (NEJM, JAMA Network) | Direct real-time PubMed query — no editorial gatekeeping; captures any indexed paper regardless of publisher |
+| **Source code** | Closed-source, proprietary | MIT-licensed open source — every prompt, rule, and agent is readable and forkable |
+
+---
+
+### Features
+
+- **5A workflow** — Ask (PICO structuring) → Acquire (PubMed) → Appraise (GRADE) → Apply (recommendation) → Assess (quality check)
+- **ReAct control loop** — Judge LLM scores every stage; Scheduling LLM decides proceed / retry / backtrack; hard-coded gate engine enforces safety bounds (max 20 iterations)
+- **Real-time evidence** — three-tier PubMed query strategy (strict → moderate → relaxed) with 24-hour disk cache and MedCPT listwise re-ranking
+- **Deterministic GRADE** — LLM classifies labels (e.g. `SERIOUS`, `NOT_SERIOUS`); Python computes the GRADE level deterministically — no LLM "interpretation" of grading rules
+- **Five question types** — Therapy, Diagnosis, Prognosis, Harm, Prevention; each triggers a different PubMed filter
+- **Four recommendation strengths** — Strong, Conditional (indirect evidence), Consensus-based (guideline/expert opinion), Insufficient Evidence
+- **Crash-resistant JSON parsing** — three-stage recovery in every agent and the Judge LLM; malformed LLM output never crashes the workflow
+- **OpenAI-compatible** — works with any provider exposing an OpenAI-style API; supports a separate fast model for Judge/Scheduling to reduce cost
+
+---
+
+### How It Works
 
 ```
-临床问题输入
-     ↓
-① Ask       将临床问题结构化为 PICO 格式（患者/干预/对照/结局）
-     ↓
-② Acquire   三层检索策略实时搜索 PubMed，Listwise 排序筛选 Top 10 文献
-     ↓
-③ Appraise  GRADE 框架评价每篇文献质量（High/Moderate/Low/Very Low）
-     ↓
-④ Apply     综合评价结果生成临床推荐，推荐强度与 GRADE 等级硬性绑定
-     ↓
-⑤ Assess    审查推理链完整性与逻辑一致性，识别知识缺口
-     ↓
-临床推荐输出（含推荐强度 + 证据等级 + 注意事项）
+Clinical Question
+       │
+  ┌────▼──────────────────────────────────────────────────────────────┐
+  │                         Coordinator                               │
+  │                                                                   │
+  │   ① Ask ──► ② Acquire ──► ③ Appraise ──► ④ Apply ──► ⑤ Assess   │
+  │       ▲          ▲              ▲              ▲          │       │
+  │       │          │              │              │          ▼       │
+  │       └───────── Scheduling LLM (next action) ◄──────────┘       │
+  │                        ▲                                         │
+  │                   Judge LLM (score 0–1, issue list)              │
+  └───────────────────────────────────────────────────────────────────┘
+                                  │
+               ┌──────────────────┼──────────────────┐
+               ▼                  ▼                  ▼
+        Recommendation      Audit Trail        Quality Score
+     (strength + quality)  (full history)       (0–1 / 1.0)
 ```
 
-每个阶段执行后，**Judge LLM** 对输出评分（0~1），**Scheduling LLM** 根据评分决定前进、重试或回退到任意前置阶段。
+**Scheduling rules (hard overrides)**
+
+| # | Condition | Forced action |
+|---|-----------|---------------|
+| 1 | All issues ≤ Minor **and** score passes | Must proceed — backtrack forbidden |
+| 2 | Same stage retried ≥ 2× with no score improvement | Further backtrack forbidden |
+| 3 | Remaining budget < 5 steps, no Critical issues | Prefer proceed |
+| 4 | Assess stage passes, no Critical issues | Terminate — backtrack forbidden |
 
 ---
 
-## 系统架构
+### Getting Started
 
-### 组件构成
+#### Prerequisites
 
-| 组件 | 职责 |
-|------|------|
-| **5 个专门智能体** | 每个智能体有独立提示词，只负责 5A 中的一个步骤 |
-| **Judge LLM** | 对每阶段输出评分，识别 Critical / Major / Minor 问题 |
-| **Scheduling LLM** | 读取评分，决策下一步行动；内置四条强制决策验证规则 |
-| **硬规则引擎** | 证据质量门控、空结果门控、死循环检测、最大迭代门控（上限 20 步） |
-| **PubMed API** | 实时文献检索，支持三层查询策略（严格 / 中等 / 宽松） |
+- Python **3.10+**
+- An **OpenAI-compatible API key** (OpenAI, Azure OpenAI, or any compatible provider)
+- A free **PubMed e-mail** (required by NCBI's API usage policy)
+- *(Optional)* GPU or CPU with ≥ 8 GB RAM for MedCPT re-ranking (falls back to relevance score if unavailable)
 
-### ReAct 循环
-
-```
-执行（Act）→ 评价（Observe）→ 推理（Reason）→ 调度（Act）→ ...
-  智能体         Judge LLM      Scheduling LLM    下一步行动
-```
-
-### Scheduling LLM 四条强制规则
-
-| 规则 | 条件 | 强制行为 |
-|------|------|---------|
-| Rule 1 | 所有问题均为 Minor 且评分通过 | 必须 proceed，不允许回退 |
-| Rule 2 | 同一阶段已回退 ≥2 次且评分无改善 | 不允许再次回退 |
-| Rule 3 | 剩余预算 < 5 步且无 Critical 问题 | 优先 proceed |
-| Rule 4 | Assess 阶段通过且无 Critical 问题 | 完成工作流，禁止回退 |
-
----
-
-## 已实施的关键改进
-
-### 1. JSON 解析鲁棒性（`src/agents/base.py`）
-
-LLM 在输出复杂 JSON 时偶发语法错误（缺少逗号、尾部逗号等），原有代码直接崩溃。
-
-实现了三阶段恢复机制 `robust_parse_json()`，覆盖全部 5 个智能体和 Judge LLM：
-1. 直接解析
-2. 提取 ` ```json ` 代码块后解析
-3. 启发式正则修复后解析（移除尾部逗号、补全缺失逗号）
-
-### 2. Scheduling LLM 决策验证层（`src/scheduling/scheduling_llm.py`）
-
-早期版本（2026-02-07）因调度 LLM 过度保守触发死循环（12 次迭代，异常终止）。实现决策验证层后，系统可正常完成，迭代次数降至 7 次。
-
-### 3. Appraise 阶段 GRADE 计算确定性化（`src/agents/appraise_agent.py`）
-
-原设计让 LLM 直接输出 GRADE 等级，结果不一致。改为：
-- LLM 只负责**分类**（输出标签：SERIOUS / NOT_SERIOUS 等）
-- Python 代码负责**确定性计算**最终 GRADE 等级
-
-确保 GRADE 规则被严格执行，而非依赖 LLM 的"理解"。
-
-### 4. Acquire 三层检索策略（`src/agents/acquire_agent.py`）
-
-单一查询策略在特定问题上返回 0 结果或过多无关结果。改为内部自动调整：
-- **严格查询**：全部 PICO 关键词 + MeSH 术语 + 研究类型过滤
-- **中等查询**：核心关键词 + 适当放宽
-- **宽松查询**：仅核心术语，不限制发表年份
-
-内部处理查询失败，不再触发全局回退到 Ask 阶段。
-
----
-
-## 测试结果
-
-### 案例一：NSTEMI 合并消化道出血
-
-**问题**：68 岁男性，急性非 ST 段抬高型心肌梗死（NSTEMI），同时合并急性消化道出血（Hb 78 g/L）。PCI 术后 DAPT 方案如何选择？
-
-**系统表现**：
-- 检索到 OPT-BIRISK 研究（PMID 39382876，2024 年）：出血高风险患者 PCI 后氯吡格雷单药治疗证据
-- 直接询问 LLM：错误记忆 OPT-BIRISK 中的药物名（混淆为替格瑞洛）及发表期刊
-- **质量评分：0.78 / 1.0**，推荐强度：Strong，证据质量：Moderate
-
-### 案例二：青少年重度特应性皮炎
-
-**问题**：13 岁男性，SCORAD 74 分，红皮病，多种外用药物无效。度普利尤单抗 vs JAK 抑制剂的疗效与安全性比较？
-
-**系统表现**：
-- 检索到 PMID 39992967、39936572（2025 年儿科专项网络 Meta 分析），LLM 因训练截止日期无法获取
-- 推荐结论（度普利尤单抗首选）与临床实际一致
-- **质量评分：0.82 / 1.0**，推荐强度：Strong，证据质量：High
-
----
-
-## 使用方式
-
-### 适合的问题类型
-
-- 治疗方案比较（A vs B 在某人群中的疗效/安全性）
-- 预防或干预策略选择
-- 已明确诊断后的管理方案
-
-> **建议**：提问前先写明诊断（如"【已明确诊断：重度特应性皮炎】"），系统对治疗类问题的表现最佳。
-
-### 不适合的问题类型
-
-- 纯诊断推理（"这个患者得了什么病？"）
-- 需要实时患者数据的剂量计算
-
-### 命令行
+#### Installation
 
 ```bash
-python -m src.main "13岁重度特应性皮炎患者，度普利尤单抗与JAK抑制剂疗效安全性如何比较？"
+# 1. Clone
+git clone https://github.com/your-org/ebm5a.git
+cd ebm5a
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Configure
+cp .env.example .env
 ```
 
-### Python API
+Edit `.env`:
+
+```dotenv
+# Required
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4
+PUBMED_EMAIL=your_email@example.com
+
+# Optional — use a cheaper/faster model for Judge and Scheduling (~30-40% faster)
+# FAST_LLM_MODEL=gpt-3.5-turbo
+```
+
+---
+
+### Usage
+
+#### Command line
+
+```bash
+python -m src.main "68-year-old male with NSTEMI and acute GI bleed (Hb 78 g/L). \
+  Post-PCI antiplatelet strategy: DAPT vs clopidogrel monotherapy?"
+```
+
+#### Python API
 
 ```python
 from src.main import run_clinical_question
 
-result = run_clinical_question("你的临床问题")
+result = run_clinical_question(
+    "13-year-old male, SCORAD 74, erythroderma, refractory to topical therapy. "
+    "Dupilumab vs JAK inhibitors — efficacy and safety comparison?"
+)
 
-print(result["recommendation"].text)
-print(f"推荐强度: {result['recommendation'].strength}")
-print(f"证据质量: {result['recommendation'].evidence_quality}")
+rec = result["recommendation"]
+print(rec.text)
+print(f"Strength         : {rec.strength}")        # e.g. "Strong"
+print(f"Evidence quality : {rec.evidence_quality}") # e.g. "High"
+print(f"Rationale        : {rec.rationale}")
+
+assess = result["assessment"]
+print(f"Quality score    : {assess.quality_score:.2f} / 1.0")
+```
+
+#### Example output (abbreviated)
+
+```
+★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+CLINICAL ANSWER
+★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
+Q: 13-year-old male, SCORAD 74 ...
+
+A: Dupilumab is recommended as first-line biologic therapy over JAK inhibitors
+   for adolescents with severe atopic dermatitis, based on superior efficacy
+   and a more established long-term safety profile.
+
+   Recommendation Strength : Strong
+   Evidence Quality        : High
+   Overall Quality Score   : 0.82 / 1.0
+```
+
+> **Tip:** For therapy questions, prefix the question with a confirmed diagnosis:
+> `"[Confirmed: severe atopic dermatitis] …"` — this helps Ask correctly classify the question type.
+
+---
+
+### Documentation
+
+| Resource | Location |
+|----------|----------|
+| Architecture design | [`docs/`](docs/) |
+| Change history | [`CHANGELOG.md`](CHANGELOG.md) |
+| Quick-start guide | [`QUICKSTART.md`](QUICKSTART.md) |
+| Prompt templates | [`src/config/prompts/`](src/config/prompts/) |
+| Evaluation dimensions | [`src/config/evaluation_dimensions/`](src/config/evaluation_dimensions/) |
+
+---
+
+### Project Structure
+
+```
+ebm5a/
+├── src/
+│   ├── main.py                      # CLI entry point
+│   ├── agents/
+│   │   ├── base.py                  # Shared robust_parse_json() — 3-stage JSON recovery
+│   │   ├── ask_agent.py             # PICO structuring + question type detection
+│   │   ├── acquire_agent.py         # PubMed retrieval + MedCPT re-ranking
+│   │   ├── appraise_agent.py        # GRADE appraisal (parallel batches)
+│   │   ├── apply_agent.py           # Recommendation synthesis
+│   │   └── assess_agent.py          # Reasoning chain quality check
+│   ├── coordinator/
+│   │   ├── coordinator.py           # ReAct loop, fast-path logic, timing
+│   │   └── gate_engine.py           # Hard-coded safety guards
+│   ├── scheduling/
+│   │   └── scheduling_llm.py        # Decision LLM + 4 validation rules
+│   ├── judge/
+│   │   └── judge_llm.py             # Scoring LLM + JSON crash recovery
+│   ├── state/
+│   │   └── schema.py                # Pydantic/dataclass state definitions
+│   ├── tools/
+│   │   ├── pubmed_api.py            # PubMed client + 24h disk cache
+│   │   └── medcpt.py                # MedCPT listwise re-ranker
+│   └── config/
+│       ├── llm_config.py            # get_llm() / get_fast_llm()
+│       ├── prompts/                 # Agent & judge prompt templates (.txt)
+│       └── evaluation_dimensions/   # Judge scoring rubrics (.json)
+├── data/cache/                      # PubMed query cache (auto-generated)
+├── logs/                            # Run logs with full audit trail
+├── docs/                            # Design documents
+├── CHANGELOG.md
+├── QUICKSTART.md
+├── requirements.txt
+└── .env.example
 ```
 
 ---
 
-## 安装配置
+### Contributing
+
+Contributions are welcome — bug reports, feature requests, and pull requests alike.
+
+**Report a bug or request a feature** → [open an issue](../../issues)
+
+**Submit a pull request:**
 
 ```bash
+# 1. Fork the repository and create a branch
+git checkout -b feat/your-feature-name
+
+# 2. Install dev dependencies
 pip install -r requirements.txt
+
+# 3. Make changes and verify
+pytest
+
+# 4. Commit and push
+git commit -m "feat: describe your change"
+git push origin feat/your-feature-name
+
+# 5. Open a pull request against main
+```
+
+Please keep PRs focused on a single concern. Large refactors or new data-source integrations should be discussed in an issue first.
+
+---
+
+### License
+
+This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE) for details.
+
+---
+
+### Credits
+
+- [NCBI PubMed](https://pubmed.ncbi.nlm.nih.gov/) — real-time biomedical literature database
+- [MedCPT](https://github.com/ncbi/MedCPT) — biomedical dense retrieval and re-ranking model by NCBI
+- [LangChain](https://python.langchain.com/) / [LangGraph](https://langchain-ai.github.io/langgraph/) — agent orchestration framework
+- [GRADE Working Group](https://www.gradeworkinggroup.org/) — evidence grading methodology
+- [shields.io](https://shields.io/) — README badges
+
+---
+---
+
+<a id="chinese"></a>
+
+## 中文
+
+### EBM 5A 是什么？
+
+EBM 5A 是一个**多智能体流水线**，能将一段普通的临床问题文本全自动转化为经过分级的、有据可查的临床推荐，全程无需人工干预，典型耗时不超过 10 分钟。
+
+系统将国际通行的**循证医学 5A 框架**（Ask → Acquire → Appraise → Apply → Assess）落地为自动化流程，并采用 **ReAct** 控制循环：每个阶段的输出均由 Judge LLM 评分、由 Scheduling LLM 路由，质量缺陷在答案到达用户之前即被发现并纠正。
+
+### 医疗 AI 的信任问题
+
+*"这个推荐真的有扎实的证据支撑吗——还是 AI 只是听起来很自信？"*
+
+这正是阻碍 AI 进入临床场景的核心问题。医生无法对无法验证的推荐采取行动。**没有可验证性的自信，不是信任。**
+
+EBM 5A 遵循一个原则：信任必须通过透明度赢得，而不是通过权威宣称。每一条输出都可以被独立核实：
+
+| 你需要核实的内容 | EBM 5A 如何让你核实 |
+|----------------|-------------------|
+| 引用的论文是真实存在的吗？ | 每条引用都附带真实 PMID——可直接在 PubMed 中查阅 |
+| 证据质量评级是否准确？ | GRADE 等级由确定性 Python 代码从 LLM 分类标签计算而来——逻辑完全可检查 |
+| 系统是如何得出这个结论的？ | 完整审计追踪：每阶段评分（0–1）、问题清单、所有回退事件、所有调度决策 |
+| 如果证据薄弱或缺失怎么办？ | 系统返回明确的 `Insufficient Evidence`——不会强行给出推荐 |
+| 输出结果经过质量检查了吗？ | Judge LLM 对每个阶段评分；未达标则重试或回退，直到通过质量阈值 |
+| 代码本身可以被审计吗？ | 完全开源——每一条提示词、每一条评分规则、每一个智能体均可阅读 |
+
+---
+
+### EBM 5A vs. OpenEvidence
+
+[OpenEvidence](https://www.openevidence.com/) 是目前被超过 40% 美国医生使用的临床 AI 平台。两个系统的目标相同：在诊疗现场为临床医生提供有据可查的答案。但实现方式存在本质区别：
+
+| 维度 | OpenEvidence | EBM 5A |
+|------|-------------|--------|
+| **证据评价机制** | 提供引用；无正式证据质量评价 | 对每篇检索文献应用 GRADE 框架；GRADE 等级由代码确定性计算 |
+| **证据薄弱时的行为** | 无论证据强弱，都会生成答案 | 返回明确的 `Insufficient Evidence`——证据不足时拒绝强行推荐 |
+| **输出过程** | 单次生成 | 迭代式 ReAct 循环：Judge LLM 对每阶段评分，Scheduling LLM 在质量未通过时重试或回退 |
+| **推理透明度** | 黑盒；内部逻辑不可审计 | 完整审计追踪：每阶段评分、每条问题、每次回退事件、每次调度决策均有记录 |
+| **文献获取方式** | 通过编辑协议获取策展语料库（NEJM、JAMA Network 等） | 实时直接查询 PubMed——无编辑准入门槛，任何已索引论文均可获取 |
+| **源代码** | 闭源商业产品 | MIT 协议完全开源——每一条提示词、规则和智能体均可阅读和 Fork |
+
+---
+
+### 核心特性
+
+- **5A 工作流** — Ask（PICO 结构化）→ Acquire（PubMed 检索）→ Appraise（GRADE 评价）→ Apply（生成推荐）→ Assess（质量审查）
+- **ReAct 控制循环** — Judge LLM 对每阶段评分；Scheduling LLM 决定前进/重试/回退；硬编码门控引擎强制安全边界（最多 20 次迭代）
+- **实时文献检索** — 三层 PubMed 查询策略（严格 → 中等 → 宽松），24 小时磁盘缓存，MedCPT Listwise 重排序
+- **GRADE 确定性计算** — LLM 只负责输出分类标签（如 `SERIOUS`、`NOT_SERIOUS`），Python 代码负责确定性地计算 GRADE 等级，不依赖 LLM 对评级规则的"理解"
+- **五种问题类型** — 治疗（Therapy）、诊断（Diagnosis）、预后（Prognosis）、危害（Harm）、预防（Prevention），每种类型触发不同 PubMed 过滤器
+- **四级推荐强度** — Strong（强）、Conditional（条件性，间接证据）、Consensus-based（基于共识，指南/专家意见）、Insufficient Evidence（证据不足）
+- **鲁棒 JSON 解析** — 每个智能体与 Judge LLM 内置三阶段恢复逻辑，LLM 输出格式错误不会导致流程崩溃
+- **OpenAI 兼容** — 支持任何暴露 OpenAI 风格 API 的服务商；Judge/Scheduling 可单独配置更快的轻量模型以降低成本
+
+---
+
+### 工作原理
+
+```
+临床问题输入
+     │
+┌────▼────────────────────────────────────────────────────────────────┐
+│                          Coordinator                                │
+│                                                                     │
+│   ① Ask ──► ② Acquire ──► ③ Appraise ──► ④ Apply ──► ⑤ Assess     │
+│       ▲          ▲              ▲              ▲          │         │
+│       │          │              │              │          ▼         │
+│       └─────── Scheduling LLM（决定下一步行动） ◄──────────┘         │
+│                       ▲                                             │
+│                  Judge LLM（评分 0–1，输出问题清单）                  │
+└─────────────────────────────────────────────────────────────────────┘
+                               │
+            ┌──────────────────┼──────────────────┐
+            ▼                  ▼                  ▼
+     临床推荐结果          完整审计追踪          质量评分
+  （推荐强度 + 证据质量）  （全历史记录）        （0–1 / 1.0）
+```
+
+**Scheduling 四条强制规则（硬覆盖）**
+
+| # | 触发条件 | 强制行为 |
+|---|----------|---------|
+| 1 | 所有问题 ≤ Minor **且**评分通过阈值 | 必须前进，禁止回退 |
+| 2 | 同一阶段已重试 ≥ 2 次且评分无改善 | 禁止继续回退 |
+| 3 | 剩余预算 < 5 步且无 Critical 问题 | 优先前进 |
+| 4 | Assess 阶段通过且无 Critical 问题 | 终止工作流，禁止回退 |
+
+---
+
+### 快速开始
+
+#### 环境依赖
+
+- Python **3.10+**
+- 兼容 OpenAI 的 **API Key**（OpenAI、Azure OpenAI 或其他兼容服务商均可）
+- 一个免费的 **PubMed 注册邮箱**（NCBI API 使用规范要求）
+- （可选）≥ 8 GB 内存的 GPU 或 CPU，用于 MedCPT 重排序（不可用时自动回退到相关性评分）
+
+#### 安装
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/your-org/ebm5a.git
+cd ebm5a
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 配置环境变量
 cp .env.example .env
 ```
 
 编辑 `.env`：
 
-```
+```dotenv
+# 必填
 LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_KEY=your_api_key_here
+LLM_API_KEY=sk-...
 LLM_MODEL=gpt-4
 PUBMED_EMAIL=your_email@example.com
+
+# 可选——让 Judge 和 Scheduling 使用更快/更便宜的模型（节省约 30-40% 时间）
+# FAST_LLM_MODEL=gpt-3.5-turbo
 ```
 
 ---
 
-## 项目结构
+### 使用方式
+
+#### 命令行
+
+```bash
+python -m src.main "68岁男性，急性NSTEMI合并急性消化道出血（Hb 78 g/L）。\
+  PCI术后抗血小板方案：DAPT还是氯吡格雷单药？"
+```
+
+#### Python API
+
+```python
+from src.main import run_clinical_question
+
+result = run_clinical_question(
+    "13岁男性，SCORAD 74分，红皮病，多种外用药无效。"
+    "度普利尤单抗与JAK抑制剂——疗效与安全性比较？"
+)
+
+rec = result["recommendation"]
+print(rec.text)
+print(f"推荐强度 : {rec.strength}")        # 例如 "Strong"
+print(f"证据质量 : {rec.evidence_quality}") # 例如 "High"
+print(f"推荐理由 : {rec.rationale}")
+
+assess = result["assessment"]
+print(f"质量评分 : {assess.quality_score:.2f} / 1.0")
+```
+
+#### 输出示例（节选）
+
+```
+★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+CLINICAL ANSWER
+★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
+Q: 13岁男性，SCORAD 74分...
+
+A: 对于重度特应性皮炎青少年患者，推荐度普利尤单抗作为一线生物制剂治疗，
+   优先于JAK抑制剂。现有证据（含2025年儿科专项网络Meta分析）显示其疗效
+   更优，长期安全性数据更为充分。
+
+   推荐强度 : Strong
+   证据质量 : High
+   质量评分 : 0.82 / 1.0
+```
+
+> **建议**：治疗类问题提问前先写明诊断，例如「【已明确诊断：重度特应性皮炎】…」，这有助于 Ask Agent 正确识别问题类型。
+
+---
+
+### 文档
+
+| 资源 | 位置 |
+|------|------|
+| 架构设计文档 | [`docs/`](docs/) |
+| 变更记录 | [`CHANGELOG.md`](CHANGELOG.md) |
+| 快速开始指南 | [`QUICKSTART.md`](QUICKSTART.md) |
+| 提示词模板 | [`src/config/prompts/`](src/config/prompts/) |
+| 评价维度定义 | [`src/config/evaluation_dimensions/`](src/config/evaluation_dimensions/) |
+
+---
+
+### 项目结构
 
 ```
 ebm5a/
 ├── src/
-│   ├── agents/          # 5 个专门智能体（Ask/Acquire/Appraise/Apply/Assess）
-│   ├── coordinator/     # 工作流编排、门控引擎
-│   ├── scheduling/      # Scheduling LLM（含决策验证层）
-│   ├── judge/           # Judge LLM
-│   ├── state/           # 状态管理与数据结构
-│   ├── tools/           # PubMed API、MedCPT 检索工具
-│   ├── config/          # LLM 配置、提示词模板
-│   └── main.py          # 入口
-├── tests/               # 测试套件
-├── logs/                # 运行日志（含完整审计追踪）
-└── docs/                # 设计文档
+│   ├── main.py                      # CLI 入口
+│   ├── agents/
+│   │   ├── base.py                  # 共享 robust_parse_json()——三阶段 JSON 恢复
+│   │   ├── ask_agent.py             # PICO 结构化 + 问题类型识别
+│   │   ├── acquire_agent.py         # PubMed 检索 + MedCPT 重排序
+│   │   ├── appraise_agent.py        # GRADE 评价（并行批次）
+│   │   ├── apply_agent.py           # 推荐综合生成
+│   │   └── assess_agent.py          # 推理链质量审查
+│   ├── coordinator/
+│   │   ├── coordinator.py           # ReAct 循环、FAST-PATH 逻辑、计时埋点
+│   │   └── gate_engine.py           # 硬编码安全门控
+│   ├── scheduling/
+│   │   └── scheduling_llm.py        # 决策 LLM + 四条验证规则
+│   ├── judge/
+│   │   └── judge_llm.py             # 评分 LLM + JSON 崩溃恢复
+│   ├── state/
+│   │   └── schema.py                # 状态数据结构定义（dataclass + TypedDict）
+│   ├── tools/
+│   │   ├── pubmed_api.py            # PubMed 客户端 + 24小时磁盘缓存
+│   │   └── medcpt.py                # MedCPT Listwise 重排序
+│   └── config/
+│       ├── llm_config.py            # get_llm() / get_fast_llm()
+│       ├── prompts/                 # 各智能体与 Judge 提示词模板（.txt）
+│       └── evaluation_dimensions/   # Judge 评分维度定义（.json）
+├── data/cache/                      # PubMed 查询缓存（自动生成）
+├── logs/                            # 运行日志（含完整审计追踪）
+├── docs/                            # 设计文档
+├── CHANGELOG.md
+├── QUICKSTART.md
+├── requirements.txt
+└── .env.example
 ```
 
 ---
 
-## 测试
+### 贡献指南
+
+欢迎提交 Bug 报告、功能建议和 Pull Request。
+
+**报告 Bug 或提交建议** → [提交 Issue](../../issues)
+
+**提交 Pull Request：**
 
 ```bash
-pytest                                      # 全部测试
-pytest --cov=src --cov-report=html         # 覆盖率报告
-pytest tests/agents/test_ask_agent.py -v   # 单个模块测试
+# 1. Fork 仓库并创建分支
+git checkout -b feat/your-feature-name
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 完成修改并验证
+pytest
+
+# 4. 提交并推送
+git commit -m "feat: 简述你的改动"
+git push origin feat/your-feature-name
+
+# 5. 向 main 分支发起 Pull Request
 ```
 
----
-
-## 局限性与下一步计划
-
-### 当前局限
-
-- **速度**：典型运行时间 6-10 分钟（多次串行 LLM 调用；配置 `FAST_LLM_MODEL` 可节省约 30%）
-- **数据源**：仅限 PubMed，不包含 ACC/AHA、ESC 等主要临床指南全文（Consensus-based 推荐可引用指南知识）
-- **语言**：文献检索为英文；中文指南、国内共识暂不支持
-- **问题类型**：已支持 Therapy/Diagnosis/Prognosis/Harm/Prevention 五类；复合多 PICO 问题仍以主要 PICO 处理
-
-### 性能优化说明
-
-系统已实施多项优化（详见 [CHANGELOG.md](CHANGELOG.md)）：FAST-PATH 快速跳过、PubMed 并行 fetch + 磁盘缓存、Appraise 并行批次等。
-
-**最有效的未实施优化**：在 `.env` 中配置 `FAST_LLM_MODEL=claude-sonnet-4-6`，让 Judge/Scheduling 使用轻量模型，可节省总时间约 30-40%。
-
-### 计划中的改进
-
-- 集成主要临床指南数据源（ACC/AHA、ESC 全文索引）
-- NNT/NNH 等数值数据自动提取
-- 支持多 PICO 分解（复合问题拆分为独立子问题并行处理）
-- 中文指南与国内共识数据库接入
+请保持每个 PR 聚焦于单一改动。大型重构或新数据源集成建议先在 Issue 中讨论。
 
 ---
 
-## License
+### 开源协议
 
-MIT
+本项目基于 **MIT 协议**开源，详见 [`LICENSE`](LICENSE)。
+
+---
+
+### 致谢
+
+- [NCBI PubMed](https://pubmed.ncbi.nlm.nih.gov/) — 实时生物医学文献数据库
+- [MedCPT](https://github.com/ncbi/MedCPT) — NCBI 开发的生物医学密集检索与重排序模型
+- [LangChain](https://python.langchain.com/) / [LangGraph](https://langchain-ai.github.io/langgraph/) — 智能体编排框架
+- [GRADE Working Group](https://www.gradeworkinggroup.org/) — 证据分级方法论
+- [shields.io](https://shields.io/) — README 徽章生成
