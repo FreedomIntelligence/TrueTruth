@@ -41,9 +41,9 @@ The project has a complete, working implementation but lacks the scaffolding exp
 - **Action:** In a single `.gitignore` edit (combined with step 2):
   - Remove: `.env.example` line
   - Remove: `QUICKSTART.md` line (see item 3b below)
-  - Add: `*.log` (not already present)
+  - Add: `*.log` — the existing `logs/` entry covers the `logs/` directory but not `.log` files written to the project root (e.g. by CI runners); `*.log` fills that gap. `logs/` is intentionally left as-is.
   - Skip `nul` — it is already present on line 18; do not add a duplicate
-- **Note:** `COMPLETION_SUMMARY.md`, `IMPLEMENTATION_STATUS.md`, `description.md` are handled in P2; add them to `.gitignore` only if they are NOT moved to `docs/internal/`
+- **Note:** `COMPLETION_SUMMARY.md`, `IMPLEMENTATION_STATUS.md`, `description.md` are handled in P2 via `git mv`; no `.gitignore` change needed for them
 
 ### 3b. `QUICKSTART.md` — unblock
 - **Action:** Remove `QUICKSTART.md` from `.gitignore` so the file becomes tracked
@@ -56,7 +56,7 @@ The project has a complete, working implementation but lacks the scaffolding exp
 ### 4. GitHub Actions CI — `.github/workflows/ci.yml`
 - **Trigger:** `push` and `pull_request` on `main`
 - **Dependency strategy:** `torch` and `transformers` are heavy (~2–3 GB) and have no unit tests against them in this repo. The CI job installs from a separate `requirements-dev.txt` (created as part of this change) that contains only lightweight test/lint dependencies, NOT torch/transformers. This avoids runner timeouts and cache bloat.
-- **`requirements-dev.txt` content:** `langchain==0.1.0`, `langchain-openai==0.0.5`, `langgraph==0.0.20`, `requests==2.31.0`, `pytest==7.4.3`, `pytest-cov==4.1.0`, `pytest-mock==3.12.0`, `python-dotenv==1.0.0`
+- **`requirements-dev.txt` content:** Pinned versions copied verbatim from `requirements.txt`, minus `torch` and `transformers`: `langchain==0.1.0`, `langchain-openai==0.0.5`, `langgraph==0.0.20`, `requests==2.31.0`, `pytest==7.4.3`, `pytest-cov==4.1.0`, `pytest-mock==3.12.0`, `python-dotenv==1.0.0`. Using the same pinned versions is intentional — this guarantees CI uses exactly the same library behaviour as a local install.
 - **Jobs:** `test` (pytest with `--tb=short`, using `requirements-dev.txt`)
 - **Python version matrix:** 3.10
 - **Why:** Even with zero tests today, the CI scaffold is in place; contributors see a badge and the framework runs on PRs
@@ -135,7 +135,7 @@ The project has a complete, working implementation but lacks the scaffolding exp
 | `IMPLEMENTATION_STATUS.md` | **Move** → `docs/internal/` |
 | `description.md` | **Move** → `docs/internal/` |
 | `QUICKSTART.md` | **Unblock** (remove from `.gitignore`) |
-
+| `CHANGELOG.md` | **Leave in place** (standard root-level open-source file; must NOT be moved) |
 | `README.md` | **Edit** (update Documentation table to include `docs/internal/` row) |
 
 **Total: 10 new files, 4 edited files, 7 items moved, 1 unblocked. Zero `src/` changes.**
