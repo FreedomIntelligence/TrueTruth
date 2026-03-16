@@ -38,8 +38,16 @@ The project has a complete, working implementation but lacks the scaffolding exp
 - **Why two steps in this order:** If `.gitignore` is edited first, git immediately sees the file with real credentials as untracked and an accidental `git add .` would stage them. Always sanitise content first.
 
 ### 3. `.gitignore` — tighten (second edit, separate from step 2 above)
-- **Action:** In the same edit where `.env.example` is removed from ignore, also add: `*.log`, `nul`
+- **Action:** In the same edit where `.env.example` is removed from ignore:
+  - Remove: `.env.example` line
+  - Add: `*.log` (not already present)
+  - Skip `nul` — it is already present on line 18; do not add a duplicate
+  - Remove: `QUICKSTART.md` line (see item 3b below)
 - **Note:** `COMPLETION_SUMMARY.md`, `IMPLEMENTATION_STATUS.md`, `description.md` are handled in P2; add them to `.gitignore` only if they are NOT moved to `docs/internal/`
+
+### 3b. `QUICKSTART.md` — unblock
+- **Action:** Remove `QUICKSTART.md` from `.gitignore` so the file becomes tracked
+- **Why:** README's Documentation table in both English and Chinese sections links to `QUICKSTART.md`, but the file is currently gitignored, making that link silently broken for anyone who clones the repo. The file exists on disk and contains useful quick-start content; it should simply be tracked.
 
 ---
 
@@ -84,6 +92,7 @@ The project has a complete, working implementation but lacks the scaffolding exp
   - `COMPLETION_SUMMARY.md` → `docs/internal/COMPLETION_SUMMARY.md`
   - `IMPLEMENTATION_STATUS.md` → `docs/internal/IMPLEMENTATION_STATUS.md`
   - `description.md` → `docs/internal/description.md`
+- **Root files intentionally left in place:** `CHANGELOG.md` — this is a standard open-source convention file; it belongs in the project root alongside README and LICENSE and must NOT be moved.
 - **README impact:** README references `docs/` in the Documentation table as "Architecture design". After the move, `docs/` will contain `docs/internal/`, `docs/superpowers/`, and the new `docs/architecture.md` stub. The README link still resolves to a valid directory. The README Documentation table must be updated to add a row for `docs/internal/` ("Internal development notes") to reflect the new structure. This README edit is included in the file change summary below.
 
 ### 10. `docs/architecture.md` (stub)
@@ -125,6 +134,8 @@ The project has a complete, working implementation but lacks the scaffolding exp
 | `COMPLETION_SUMMARY.md` | **Move** → `docs/internal/` |
 | `IMPLEMENTATION_STATUS.md` | **Move** → `docs/internal/` |
 | `description.md` | **Move** → `docs/internal/` |
+| `QUICKSTART.md` | **Unblock** (remove from `.gitignore`) |
+
 | `README.md` | **Edit** (update Documentation table to include `docs/internal/` row) |
 
-**Total: 10 new files, 3 edited files, 7 items moved. Zero `src/` changes.**
+**Total: 10 new files, 4 edited files, 7 items moved, 1 unblocked. Zero `src/` changes.**
