@@ -1,6 +1,6 @@
 <div align="center">
 
-# EBM 5A
+# TrueTruth
 
 **Evidence-Based Medicine Clinical Decision Support System**
 **循证医学临床决策支持系统**
@@ -20,7 +20,7 @@
 > [!CAUTION]
 > **FOR RESEARCH AND EDUCATIONAL USE ONLY — NOT A MEDICAL DEVICE**
 >
-> EBM 5A is an experimental research tool. It has **not** been approved, cleared, or certified as a medical device by the FDA, CE mark, NMPA, or any other regulatory authority.
+> TrueTruth is an experimental research tool. It has **not** been approved, cleared, or certified as a medical device by the FDA, CE mark, NMPA, or any other regulatory authority.
 >
 > - Outputs of this system are **not** a substitute for the clinical judgment of a licensed healthcare professional.
 > - All recommendations must be **independently reviewed and validated** by a qualified clinician before any clinical decision is made.
@@ -33,7 +33,7 @@
 > [!CAUTION]
 > **仅供科研与教育用途——本系统不是医疗器械**
 >
-> EBM 5A 是一个实验性研究工具，**未经** FDA、CE、国家药品监督管理局（NMPA）或任何其他监管机构批准、许可或认证为医疗器械。
+> TrueTruth 是一个实验性研究工具，**未经** FDA、CE、国家药品监督管理局（NMPA）或任何其他监管机构批准、许可或认证为医疗器械。
 >
 > - 本系统的输出**不能**替代持证医疗专业人员的临床判断。
 > - 任何推荐建议在用于临床决策前，**必须**由具备资质的临床医生独立审查和验证。
@@ -49,9 +49,9 @@
 
 ## English
 
-### What is EBM 5A?
+### What is TrueTruth?
 
-EBM 5A is a **multi-agent pipeline** that turns a plain-text clinical question into a graded, evidence-backed recommendation — fully automatically, in under 10 minutes.
+TrueTruth is a **multi-agent pipeline** that turns a plain-text clinical question into a graded, evidence-backed recommendation — fully automatically, in under 10 minutes.
 
 It operationalises the international **Evidence-Based Medicine 5A framework** (Ask → Acquire → Appraise → Apply → Assess) using a **ReAct** control loop: each stage is scored by a Judge LLM and routed by a Scheduling LLM, so quality failures are caught and corrected before the answer reaches you.
 
@@ -61,9 +61,9 @@ It operationalises the international **Evidence-Based Medicine 5A framework** (A
 
 This is the question that blocks adoption of AI in clinical settings. A clinician cannot act on a recommendation they cannot verify. **Confidence without verifiability is not trust.**
 
-EBM 5A is designed on one principle: trust must be earned through transparency, not claimed through authority. Every output is independently verifiable:
+TrueTruth is designed on one principle: trust must be earned through transparency, not claimed through authority. Every output is independently verifiable:
 
-| What you need to verify | How EBM 5A lets you verify it |
+| What you need to verify | How TrueTruth lets you verify it |
 |-------------------------|-------------------------------|
 | Are the cited papers real? | Every citation carries a real PMID — look it up directly in PubMed |
 | Is the evidence quality rating correct? | GRADE level is computed by deterministic Python code from LLM classification labels — the logic is inspectable |
@@ -74,11 +74,11 @@ EBM 5A is designed on one principle: trust must be earned through transparency, 
 
 ---
 
-### EBM 5A vs. OpenEvidence
+### TrueTruth vs. OpenEvidence
 
 [OpenEvidence](https://www.openevidence.com/) is a widely-adopted clinical AI platform serving over 40% of US physicians. Both systems aim to give clinicians evidence-backed answers at the point of care. The approaches differ substantially:
 
-| Dimension | OpenEvidence | EBM 5A |
+| Dimension | OpenEvidence | TrueTruth |
 |-----------|-------------|--------|
 | **Evidence appraisal** | Provides citations; no formal appraisal of evidence quality | Applies GRADE framework to each retrieved article; GRADE level computed deterministically by code |
 | **When evidence is weak** | Generates an answer regardless of evidence strength | Returns explicit `Insufficient Evidence` — refuses to force a recommendation when evidence does not support one |
