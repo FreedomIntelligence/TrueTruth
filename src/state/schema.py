@@ -22,6 +22,9 @@ class Evidence:
     study_type: Optional[str] = None
     publication_date: Optional[str] = None
     grade_level: Optional[str] = None
+    pmcid: Optional[str] = None       # PMC article ID (local DB only)
+    full_text: Optional[str] = None   # Full text (local DB only, not passed to prompts)
+    key_sentences: Optional[str] = None  # Extracted span(s) relevant to query keywords
 
 @dataclass
 class AppraisalResults:

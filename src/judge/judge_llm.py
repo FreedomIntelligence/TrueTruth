@@ -919,6 +919,8 @@ class JudgeLLM:
                 appraisal_d = asdict(appraisal)
                 for ev in appraisal_d.get("evidence", []):
                     ev.pop("abstract", None)
+                    ev.pop("full_text", None)
+                    ev.pop("key_sentences", None)
             else:
                 appraisal_d = appraisal
             context["stage_output"] = json.dumps({

@@ -4,6 +4,7 @@ from pathlib import Path
 from src.agents.base import BaseAgent, robust_parse_json
 from src.state.schema import WorkflowState, Evidence
 from src.tools.pubmed_api import search_pubmed
+from src.tools.local_evidence_db import search_local
 
 # Cochrane Handbook Highly Sensitive Search Strategy (HSSS) —
 # sensitive version for identifying RCTs and systematic reviews in MEDLINE.
@@ -95,6 +96,14 @@ class AcquireAgent(BaseAgent):
             return remainder.strip()
         return content.strip()
 
+    def _use_local_db(self, question_type: str = "Therapy") -> bool:
+        """Return True to route retrieval through the local obstetrics evidence DB.
+
+        Demo phase: always True.  Later this can be switched per question_type
+        or via an environment variable / config flag.
+        """
+        return True
+
     def _apply_search_filter(self, query: str, question_type: str = "Therapy") -> str:
         """Wrap query with an appropriate filter based on question type."""
         search_filter = _FILTER_BY_QUESTION_TYPE.get(question_type, _HSSS_FILTER)
@@ -144,7 +153,7 @@ class AcquireAgent(BaseAgent):
         lines = []
         for i, e in enumerate(candidates):
             study_hint = f"[{e.study_type}] " if e.study_type else ""
-            abstract_preview = (e.abstract or "")[:150]
+            abstract_preview = e.key_sentences if e.key_sentences else (e.abstract or "")[:150]
             lines.append(
                 f"[{i + 1}] {study_hint}{e.title}\n"
                 f"     Abstract: {abstract_preview}"
@@ -223,27 +232,35 @@ class AcquireAgent(BaseAgent):
         base_query = self._extract_query(response.content)
         print(f"[DEBUG] Base query: {base_query}")
 
-        # Step 2: PubMed search — type-specific filter first, fall back to base query
+        # Step 2: Search — local obstetrics DB (full-text) or PubMed fallback
         question_type = state.get("question_type") or "Therapy"
-        filtered_query = self._apply_search_filter(base_query, question_type)
-        print(f"[DEBUG] question_type={question_type}, filtered query: {filtered_query}")
+        search_query_used = ""
 
         try:
             t0 = time.time()
-            raw_results = search_pubmed(query=filtered_query, max_results=20)
-            print(f"[DEBUG] PubMed (filtered) returned {len(raw_results)} articles")
-            if len(raw_results) == 0:
-                print("[DEBUG] Filtered query returned 0 results — falling back to base query")
-                raw_results = search_pubmed(query=base_query, max_results=20)
-                print(f"[DEBUG] PubMed (base) returned {len(raw_results)} articles")
+            if self._use_local_db(question_type):
+                print(f"[DEBUG] question_type={question_type}, routing to local obstetrics DB")
+                raw_results = search_local(query=base_query, top_k=20)
                 search_query_used = base_query
+                print(f"[DEBUG] Local DB returned {len(raw_results)} articles")
+                print(f"[TIMING] Local DB search: {time.time()-t0:.1f}s")
             else:
-                search_query_used = filtered_query
-            print(f"[TIMING] PubMed search (parallel fetch): {time.time()-t0:.1f}s")
+                filtered_query = self._apply_search_filter(base_query, question_type)
+                print(f"[DEBUG] question_type={question_type}, filtered query: {filtered_query}")
+                raw_results = search_pubmed(query=filtered_query, max_results=20)
+                print(f"[DEBUG] PubMed (filtered) returned {len(raw_results)} articles")
+                if len(raw_results) == 0:
+                    print("[DEBUG] Filtered query returned 0 results — falling back to base query")
+                    raw_results = search_pubmed(query=base_query, max_results=20)
+                    print(f"[DEBUG] PubMed (base) returned {len(raw_results)} articles")
+                    search_query_used = base_query
+                else:
+                    search_query_used = filtered_query
+                print(f"[TIMING] PubMed search (parallel fetch): {time.time()-t0:.1f}s")
         except Exception as e:
             return {
                 "evidence_list": [],
-                "search_query": filtered_query,
+                "search_query": search_query_used,
                 "total_results": 0,
                 "selected_count": 0,
                 "error": str(e),
