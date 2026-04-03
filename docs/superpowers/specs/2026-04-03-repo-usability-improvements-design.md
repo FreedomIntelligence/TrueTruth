@@ -28,14 +28,15 @@ This spec covers all improvements in a single implementation pass (Approach A: c
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile.backend` | Python/FastAPI container |
-| `Dockerfile.frontend` | Multi-stage Node build + Nginx static server |
+| `Dockerfile.backend` | Python/FastAPI container (non-root user) |
+| `Dockerfile.frontend` | Multi-stage Node build + Nginx static server (non-root user) |
+| `nginx.conf` | Nginx config: `/api` reverse proxy + SPA `try_files` routing |
 | `docker-compose.yml` | Production one-command full-stack startup |
 | `docker-compose.dev.yml` | Development override (source mounts, hot reload) |
 | `.dockerignore` | Exclude logs, cache, .env, __pycache__ from build context |
 | `Makefile` | Unified command entry point |
 | `scripts/check_env.py` | .env validation script |
-| `.github/workflows/ci.yml` | GitHub Actions CI (lint + test + docker-build) |
+| `.github/workflows/ci.yml` | GitHub Actions CI (lint + test + docker-build, with caching) |
 | `.github/ISSUE_TEMPLATE/bug_report.md` | Bug report template |
 | `.github/ISSUE_TEMPLATE/feature_request.md` | Feature request template |
 | `.github/pull_request_template.md` | PR template |
@@ -48,6 +49,8 @@ This spec covers all improvements in a single implementation pass (Approach A: c
 |------|--------|
 | `README.md` | Add badges, Web UI section, Docker quick start, screenshot placeholder |
 | `QUICKSTART.md` | Add Docker startup instructions |
+| `.env.example` | Audit and sync all required env vars with current codebase |
+| `.gitignore` | Ensure `data/cache/`, `logs/`, `.env` are excluded |
 
 ### Unchanged
 
@@ -77,6 +80,8 @@ No third service in this pass (Redis/queue deferred to future).
 - **Nginx reverse-proxies `/api` → `backend:8000`** — eliminates CORS issues; frontend uses a single origin
 - **Frontend `VITE_API_URL` set to `/api` at build time** — aligns with Nginx proxy path
 - **`docker-compose.dev.yml` override** — mounts `src/` and `web/` as volumes for hot reload during development
+- **Non-root users in both containers** — backend runs as `appuser` (UID 1000), frontend Nginx runs as `nginx` user; limits blast radius of any RCE vulnerability
+- **`nginx.conf` includes SPA routing** — `try_files $uri $uri/ /index.html` ensures React Router routes (e.g. `/history`) don't 404 on browser refresh
 
 ### User experience
 
@@ -92,12 +97,35 @@ make docker-up            # docker compose up --build -d
 - Base: `python:3.11-slim`
 - Install `requirements.txt` then `requirements-web.txt`
 - Working directory: `/app`
+- Create non-root user: `RUN useradd -m -u 1000 appuser && chown -R appuser /app`
+- Switch to non-root: `USER appuser`
 - Entrypoint: `uvicorn web.backend.app:app --host 0.0.0.0 --port 8000`
 
 **`Dockerfile.frontend`**
 - Stage 1 (build): `node:20-alpine`, runs `npm ci && npm run build`
 - Stage 2 (serve): `nginx:alpine`, copies build output to `/usr/share/nginx/html`
-- Includes `nginx.conf` with `/api` proxy pass to `backend:8000`
+- Copies `nginx.conf` into `/etc/nginx/conf.d/default.conf`
+- Nginx runs as the built-in `nginx` user (non-root by default in `nginx:alpine`)
+
+**`nginx.conf`**
+```nginx
+server {
+    listen 80;
+
+    # SPA routing: React Router client-side routes must not 404 on refresh
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Reverse proxy to FastAPI backend
+    location /api/ {
+        proxy_pass http://backend:8000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
 
 ---
 
@@ -154,18 +182,22 @@ test  ────────────────────────�
 
 **lint**
 - Python 3.11
+- Cache: `actions/cache` on `~/.cache/pip` keyed by `requirements.txt` hash
 - `pip install ruff`
 - `ruff check src/ web/backend/`
 - `ruff format --check src/ web/backend/`
 
 **test**
 - Python 3.11
+- Cache: `actions/cache` on `~/.cache/pip` keyed by `requirements.txt` + `requirements-web.txt` hash
 - `pip install -r requirements.txt -r requirements-web.txt`
-- Environment: `LLM_API_KEY=test`, `PUBMED_EMAIL=ci@test.com`
+- Environment: `LLM_API_KEY=ci-placeholder-not-real`, `PUBMED_EMAIL=ci@example.com`
+  - **Policy:** CI never uses real API keys. The placeholder value is intentionally non-functional. Real keys must never appear in YAML or GitHub Secrets for this job — doing so would send live (costly) requests on every PR.
 - `pytest tests/ --tb=short; STATUS=$?; [ $STATUS -eq 5 ] && exit 0 || exit $STATUS`
 - Handles pytest exit code 5 ("no tests collected") gracefully — CI passes if tests/ is empty or has no test files; real failures (exit code 1) still fail CI
 
 **docker-build**
+- Cache: Docker layer cache via `cache-from: type=gha` and `cache-to: type=gha,mode=max` (GitHub Actions cache backend)
 - `docker compose build` (no run, no real API keys needed)
 - Validates Dockerfiles and compose config are valid
 
