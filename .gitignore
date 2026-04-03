@@ -8,6 +8,8 @@ data/
 .pytest_cache/
 .venv/
 venv/
+node_modules/
+web/frontend/dist/
 .coverage
 htmlcov/
 # Project-specific exclusions
