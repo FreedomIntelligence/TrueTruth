@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install curl for Docker health check
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps in a separate layer for Docker cache efficiency.
+# PyTorch (~2 GB) is in requirements.txt — this layer only rebuilds when deps change.
+COPY requirements.txt requirements-web.txt ./
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt -r requirements-web.txt
+
+# Copy application source
+COPY src/ ./src/
+COPY web/ ./web/
+
+# Create non-root user, app directories, fix ownership.
+# mkdir here so Docker named volumes inherit appuser ownership at runtime.
+RUN useradd -m -u 1000 appuser \
+    && mkdir -p /app/data/cache /app/logs \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 8000
+
+CMD ["uvicorn", "web.backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
