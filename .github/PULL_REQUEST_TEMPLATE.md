@@ -1,22 +1,24 @@
 ## Summary
-_What does this PR do? Why?_
 
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Documentation update
-- [ ] Refactor / performance improvement
-- [ ] Other (describe):
+<!-- What does this PR do? 2–3 bullet points. -->
 
-## Testing Done
-_Describe how you tested this change. If you added or modified tests, list them here._
+- 
+- 
 
-```bash
-pytest
-```
+## Related Issue
+
+Closes #
+
+## How to Test
+
+<!-- Steps to verify the change works as expected. -->
+
+1.
+2.
 
 ## Checklist
-- [ ] I have read `CONTRIBUTING.md`
-- [ ] My changes do not modify files under `src/` in a breaking way
-- [ ] I have updated the relevant documentation (README, CHANGELOG, docstrings)
-- [ ] Tests pass locally (`pytest`)
+
+- [ ] `make lint` passes
+- [ ] `make test` passes (or no tests affected)
+- [ ] Docs updated if behaviour changed
+- [ ] `.env.example` updated if new env vars added

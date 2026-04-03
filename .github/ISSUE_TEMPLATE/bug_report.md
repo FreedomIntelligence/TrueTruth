@@ -1,24 +1,40 @@
 ---
-name: Bug report
-about: Something is not working as expected
+name: Bug Report
+about: Something isn't working as expected
 labels: bug
 ---
 
-## Description
-A clear description of what the bug is.
+## Environment
+
+- **OS:** (e.g. Ubuntu 22.04, macOS 14, Windows 11)
+- **Python version:** (e.g. 3.11.2) — run `python --version`
+- **Interface:** CLI / Web UI / Both
+- **LLM provider:** (e.g. OpenAI, Azure OpenAI, HuaTuoGPT, local Ollama)
+- **EBM 5A version / commit:** (run `git log --oneline -1`)
 
 ## Steps to Reproduce
-1. Run: `python -m src.main "..."`
-2. See error
+
+1.
+2.
+3.
 
 ## Expected Behaviour
-What you expected to happen.
+
+What should have happened.
 
 ## Actual Behaviour
-What actually happened. Include the full error message and traceback if applicable.
 
-## Environment
-- OS:
-- Python version (`python --version`):
-- LLM provider / model:
-- EBM 5A version / commit:
+What actually happened.
+
+## Relevant Log Output
+
+Paste the relevant section from `logs/` or the terminal output.
+Use a code block:
+
+```
+[paste log here]
+```
+
+## Additional Context
+
+Any other context (screenshots, related issues, config details).

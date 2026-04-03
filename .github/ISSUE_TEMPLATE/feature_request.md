@@ -1,17 +1,17 @@
 ---
-name: Feature request
-about: Suggest an improvement or new capability
+name: Feature Request
+about: Suggest a new feature or improvement
 labels: enhancement
 ---
 
-## Problem Statement
-What problem does this feature solve? Who is affected?
+## What would you like?
 
-## Proposed Solution
-Describe the feature you'd like.
+A clear description of the feature you are requesting.
 
-## Alternatives Considered
-What other approaches did you consider, and why did you rule them out?
+## Why is this useful?
 
-## Additional Context
-Any other context, references, or screenshots.
+Describe the use case or motivation. Who benefits, and how?
+
+## Possible implementation approach (optional)
+
+If you have ideas about how it could be implemented, share them here.
