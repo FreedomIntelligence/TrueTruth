@@ -3,9 +3,11 @@
 
 .DEFAULT_GOAL := help
 
+SHELL := /bin/bash
+
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 # ── Development ─────────────────────────────────────────────────────────────
 
@@ -49,4 +51,5 @@ check-env: ## Validate .env before running (run this first!)
 	python scripts/check_env.py
 
 cli: ## Run a clinical query via CLI  (usage: make cli QUERY="your question")
+	@test -n "$(QUERY)" || (echo 'Usage: make cli QUERY="your clinical question"' && exit 1)
 	python -m src.main "$(QUERY)"
