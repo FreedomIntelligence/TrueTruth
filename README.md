@@ -356,7 +356,6 @@ This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE) 
 - [shields.io](https://shields.io/) — README badges
 
 ---
----
 
 <a id="chinese"></a>
 
@@ -481,7 +480,7 @@ EBM 5A 遵循一个原则：信任必须通过透明度赢得，而不是通过�
 
 ---
 
-### 快速开始
+### 安装步骤
 
 #### 环境依赖
 
