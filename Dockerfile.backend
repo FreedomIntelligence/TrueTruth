@@ -11,7 +11,8 @@ RUN apt-get update \
 # PyTorch (~2 GB) is in requirements.txt — this layer only rebuilds when deps change.
 COPY requirements.txt requirements-web.txt ./
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r requirements.txt -r requirements-web.txt
+    && pip install --no-cache-dir -r requirements.txt -r requirements-web.txt \
+       --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Copy application source
 COPY src/ ./src/
