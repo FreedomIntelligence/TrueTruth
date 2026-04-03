@@ -1,5 +1,37 @@
 # EBM 5A系统快速开始指南
 
+## 方式一：Docker（推荐）
+
+最快的上手方式——一行命令启动前后端，无需手动配置 Python 环境。
+
+**前提：** 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/) 或 Docker Engine + Docker Compose。
+
+```bash
+# 1. 复制并填写配置文件
+cp .env.example .env
+# 用编辑器打开 .env，填写 LLM_API_KEY 和 PUBMED_EMAIL
+
+# 2. 启动
+make docker-up
+
+# 3. 访问 Web UI
+# 浏览器打开 http://localhost
+```
+
+停止服务：
+```bash
+make docker-down
+```
+
+查看日志：
+```bash
+make docker-logs
+```
+
+---
+
+## 方式二：手动安装
+
 ## 1. 配置环境
 
 ### 创建.env文件

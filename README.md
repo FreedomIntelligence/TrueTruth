@@ -5,6 +5,7 @@
 **Evidence-Based Medicine Clinical Decision Support System**
 **循证医学临床决策支持系统**
 
+[![CI](https://github.com/Winda0001/ebm5a/actions/workflows/ci.yml/badge.svg)](https://github.com/Winda0001/ebm5a/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![LangChain](https://img.shields.io/badge/LangChain-0.1.0-green.svg)](https://python.langchain.com/)
@@ -46,6 +47,39 @@
 ---
 
 <a id="english"></a>
+
+### Quick Start
+
+**Docker (recommended — one command, no environment setup):**
+
+```bash
+cp .env.example .env      # fill in LLM_API_KEY, PUBMED_EMAIL
+make docker-up            # builds and starts backend + frontend
+# Open http://localhost
+```
+
+**Manual (CLI only):**
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env      # fill in your values
+make check-env            # validate configuration
+make cli QUERY="68-year-old with NSTEMI and acute GI bleed: DAPT or clopidogrel monotherapy?"
+```
+
+### Interfaces
+
+| Interface | How to start | URL |
+|-----------|-------------|-----|
+| **Web UI** (Docker) | `make docker-up` | http://localhost |
+| **Web UI** (manual) | `make dev-backend` + `make dev-frontend` | http://localhost:5173 |
+| **CLI** | `make cli QUERY="..."` | — |
+
+The Web UI provides real-time workflow visualisation, stage-by-stage scores, evidence tables, and history. The CLI outputs the full audit trail to `logs/`.
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for common issues and [docs/glossary.md](docs/glossary.md) for GRADE/PICO/recommendation strength definitions.
+
+---
 
 ## English
 
@@ -325,6 +359,39 @@ This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE) 
 ---
 
 <a id="chinese"></a>
+
+### 快速开始
+
+**Docker（推荐——一行命令，无需配置环境）：**
+
+```bash
+cp .env.example .env      # 填写 LLM_API_KEY 和 PUBMED_EMAIL
+make docker-up            # 构建并启动后端 + 前端
+# 访问 http://localhost
+```
+
+**手动（仅 CLI）：**
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env      # 填写相关配置
+make check-env            # 验证配置
+make cli QUERY="68岁男性，NSTEMI合并急性消化道出血：DAPT还是单用氯吡格雷？"
+```
+
+### 界面
+
+| 界面 | 启动方式 | 访问地址 |
+|------|---------|--------|
+| **Web UI**（Docker） | `make docker-up` | http://localhost |
+| **Web UI**（手动） | `make dev-backend` + `make dev-frontend` | http://localhost:5173 |
+| **CLI** | `make cli QUERY="..."` | — |
+
+Web UI 提供实时工作流可视化、逐阶段评分、证据表格和历史记录。CLI 将完整审计日志输出到 `logs/`。
+
+常见问题请参阅 [docs/troubleshooting.md](docs/troubleshooting.md)；GRADE / PICO / 推荐强度等术语请参阅 [docs/glossary.md](docs/glossary.md)。
+
+---
 
 ## 中文
 
