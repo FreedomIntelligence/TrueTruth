@@ -44,7 +44,7 @@ env_path = Path(".env")
 if not env_path.exists():
     fail(
         ".env file not found",
-        "Run: cp .env.example .env   then fill in your values",
+        "Run from project root: cp .env.example .env   then fill in your values",
     )
     sys.exit(1)
 
@@ -55,7 +55,13 @@ for line in env_path.read_text(encoding="utf-8").splitlines():
     line = line.strip()
     if line and not line.startswith("#") and "=" in line:
         key, _, value = line.partition("=")
-        env_vars[key.strip()] = value.strip().strip('"').strip("'")
+        raw = value.strip()
+        # Strip inline comments (only when value is not quoted)
+        if raw and raw[0] not in ('"', "'"):
+            raw = raw.split("#")[0].rstrip()
+        else:
+            raw = raw.strip('"').strip("'")
+        env_vars[key.strip()] = raw
 
 os.environ.update(env_vars)
 
@@ -97,9 +103,14 @@ else:
 # ── 4. PUBMED_EMAIL ──────────────────────────────────────────────────────────
 
 email = os.getenv("PUBMED_EMAIL", "")
-if not email or not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+if not email or email == "your_email@example.com":
     fail(
-        "PUBMED_EMAIL not set or invalid format",
+        "PUBMED_EMAIL not set or still placeholder",
+        "Add PUBMED_EMAIL=your@email.com to .env (required by NCBI API)",
+    )
+elif not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+    fail(
+        "PUBMED_EMAIL format invalid",
         "Add PUBMED_EMAIL=your@email.com to .env (required by NCBI API)",
     )
 else:
