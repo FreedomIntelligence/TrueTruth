@@ -48,8 +48,8 @@ format: ## Auto-format code (ruff)
 # ── Utilities ────────────────────────────────────────────────────────────────
 
 check-env: ## Validate .env before running (run this first!)
-	python scripts/check_env.py
+	python3 scripts/check_env.py
 
 cli: ## Run a clinical query via CLI  (usage: make cli QUERY="your question")
 	@test -n "$(QUERY)" || (echo 'Usage: make cli QUERY="your clinical question"' && exit 1)
-	python -m src.main "$(QUERY)"
+	python3 -m src.main "$(QUERY)"
