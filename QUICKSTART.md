@@ -15,7 +15,7 @@ cp .env.example .env
 make docker-up
 
 # 3. 访问 Web UI
-# 浏览器打开 http://localhost
+# 浏览器打开 http://localhost:8080
 ```
 
 停止服务：

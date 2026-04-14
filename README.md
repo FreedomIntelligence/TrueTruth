@@ -55,7 +55,7 @@
 ```bash
 cp .env.example .env      # fill in LLM_API_KEY, PUBMED_EMAIL
 make docker-up            # builds and starts backend + frontend
-# Open http://localhost
+# Open http://localhost:8080
 ```
 
 **Manual (CLI only):**
@@ -71,7 +71,7 @@ make cli QUERY="68-year-old with NSTEMI and acute GI bleed: DAPT or clopidogrel 
 
 | Interface | How to start | URL |
 |-----------|-------------|-----|
-| **Web UI** (Docker) | `make docker-up` | http://localhost |
+| **Web UI** (Docker) | `make docker-up` | http://localhost:8080 |
 | **Web UI** (manual) | `make dev-backend` + `make dev-frontend` | http://localhost:5173 |
 | **CLI** | `make cli QUERY="..."` | — |
 
@@ -366,7 +366,7 @@ This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE) 
 ```bash
 cp .env.example .env      # 填写 LLM_API_KEY 和 PUBMED_EMAIL
 make docker-up            # 构建并启动后端 + 前端
-# 访问 http://localhost
+# 访问 http://localhost:8080
 ```
 
 **手动（仅 CLI）：**
@@ -382,7 +382,7 @@ make cli QUERY="68岁男性，NSTEMI合并急性消化道出血：DAPT还是单�
 
 | 界面 | 启动方式 | 访问地址 |
 |------|---------|--------|
-| **Web UI**（Docker） | `make docker-up` | http://localhost |
+| **Web UI**（Docker） | `make docker-up` | http://localhost:8080 |
 | **Web UI**（手动） | `make dev-backend` + `make dev-frontend` | http://localhost:5173 |
 | **CLI** | `make cli QUERY="..."` | — |
 
