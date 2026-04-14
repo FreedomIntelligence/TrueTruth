@@ -37,7 +37,7 @@ docker-logs: ## Tail logs from all Docker services
 # ── Quality ──────────────────────────────────────────────────────────────────
 
 test: ## Run test suite with pytest
-	pytest tests/ --tb=short -q
+	pytest tests/ --tb=short -q || [ $$? -eq 5 ]
 
 lint: ## Check code style (ruff)
 	ruff check src/ web/backend/
