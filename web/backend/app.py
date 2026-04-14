@@ -7,7 +7,6 @@ Endpoints:
 """
 
 import asyncio
-import sys
 import threading
 import traceback
 import uuid

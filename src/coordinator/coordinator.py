@@ -159,7 +159,7 @@ class Coordinator:
 
             # For MVP, we'll just log and continue
             print(f"\n{'='*80}")
-            print(f"HUMAN INTERVENTION REQUESTED")
+            print("HUMAN INTERVENTION REQUESTED")
             print(f"{'='*80}")
             print(f"Scope: {request.review_scope}")
             print(f"Reason: {request.reason}")
@@ -179,7 +179,6 @@ class Coordinator:
         """Execute complete workflow with Judge and Scheduling LLMs"""
         state = self.initialize_state(question)
         workflow_start = time.time()
-        timing_summary: Dict[str, float] = {}  # stage -> cumulative seconds
 
         while not state.get("should_terminate"):
             current_step = state["current_step"]

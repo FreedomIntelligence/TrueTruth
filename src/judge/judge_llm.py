@@ -2,7 +2,7 @@ import json
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
-from src.state.schema import Observe, Evaluation, Issue, WorkflowState
+from src.state.schema import Observe, Evaluation, WorkflowState
 from src.agents.base import robust_parse_json
 
 # Dimension weights per stage (used by Python to compute weighted overall_score)
@@ -799,7 +799,7 @@ class JudgeLLM:
           4. Compute weighted overall_score and pass_threshold in Python.
           5. Return Observe.
         """
-        from src.state.schema import Issue as IssueSchema, Evaluation, Observe as ObserveSchema
+        from src.state.schema import Issue as IssueSchema, Observe as ObserveSchema
 
         prompt_template = self._load_prompt(stage)
         context = self._prepare_context(stage, output, state)

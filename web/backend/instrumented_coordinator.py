@@ -10,7 +10,6 @@ import asyncio
 import threading
 import time
 from datetime import datetime, timezone
-from dataclasses import is_dataclass
 
 from src.coordinator.coordinator import Coordinator
 from src.state.schema import WorkflowState, SchedulingDecision

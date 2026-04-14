@@ -56,7 +56,7 @@ def robust_parse_json(content: str) -> dict:
     raw = _extract_json_block(content)
     try:
         return json.loads(raw)
-    except json.JSONDecodeError as first_err:
+    except json.JSONDecodeError:
         pass
 
     # Stage 3: heuristic repair then parse

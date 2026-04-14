@@ -1,5 +1,5 @@
 from typing import Optional, List
-from src.state.schema import WorkflowState, GateTrigger, Observe
+from src.state.schema import WorkflowState, GateTrigger
 
 def check_max_iterations_gate(state: WorkflowState) -> Optional[GateTrigger]:
     """Check if maximum iterations exceeded"""
@@ -9,7 +9,7 @@ def check_max_iterations_gate(state: WorkflowState) -> Optional[GateTrigger]:
     if iteration_count > 20:
         return GateTrigger(
             gate_name="max_iterations",
-            reason=f"Exceeded 20 total iterations",
+            reason="Exceeded 20 total iterations",
             suggested_action="terminate",
             output_message={
                 "status": "max_iterations_exceeded",

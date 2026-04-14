@@ -1,7 +1,7 @@
 """Serialize WorkflowState dataclass fields to JSON-safe dicts for SSE events."""
 
 from dataclasses import asdict, is_dataclass
-from typing import Any, Dict, List, Optional
+from typing import List
 
 
 def serialize_evidence_list(evidence_list) -> List[dict]:

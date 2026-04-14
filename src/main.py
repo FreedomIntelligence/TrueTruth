@@ -138,7 +138,7 @@ def format_output(state: Dict[str, Any]) -> str:
             output.append(f"    Overall Score: {obs.evaluation.overall_score:.2f}")
             output.append(f"    Pass: {'Yes' if obs.evaluation.pass_threshold else 'No'}")
             if obs.evaluation.issues:
-                output.append(f"    Issues:")
+                output.append("    Issues:")
                 for issue in obs.evaluation.issues:
                     output.append(f"      - [{issue.severity.upper()}] {issue.dimension}: {issue.description}")
         output.append("")

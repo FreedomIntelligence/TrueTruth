@@ -1,7 +1,7 @@
 import requests
 
 # 配置
-api_key = "sk-"
+api_key = "sk-PAZLU1tA91gBZ2tmH97e8rLQCJuyNi1O5TgMhIsUFgofrK0z"
 base_url = "https://api.huatuogpt.cn" # 你的 API 域名
 
 # 拼接端点
