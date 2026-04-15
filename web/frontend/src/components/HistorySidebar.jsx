@@ -25,11 +25,9 @@ export default function HistorySidebar() {
     try { return localStorage.getItem(SIDEBAR_KEY) !== 'false' } catch { return true }
   })
   const [history, setHistory] = useState([])
-  const { loadFromHistory, exitHistoryView, historyView } = useWorkflowStore(s => ({
-    loadFromHistory: s.loadFromHistory,
-    exitHistoryView: s.exitHistoryView,
-    historyView: s.historyView,
-  }))
+  const loadFromHistory = useWorkflowStore(s => s.loadFromHistory)
+  const exitHistoryView = useWorkflowStore(s => s.exitHistoryView)
+  const historyView = useWorkflowStore(s => s.historyView)
 
   useEffect(() => {
     setHistory(loadHistory())
