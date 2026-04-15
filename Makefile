@@ -12,14 +12,14 @@ help: ## Show this help
 # ── Development ─────────────────────────────────────────────────────────────
 
 dev-backend: ## Start FastAPI backend with hot reload (port 8000)
-	uvicorn web.backend.app:app --reload --port 8000
+	python3 -m uvicorn web.backend.app:app --reload --port 8000
 
 dev-frontend: ## Start Vite dev server (port 5173)
 	cd web/frontend && npm run dev
 
 dev: ## Start backend + frontend together (Ctrl+C stops both)
 	@trap 'kill 0' SIGINT; \
-	 uvicorn web.backend.app:app --reload --port 8000 & \
+	 python3 -m uvicorn web.backend.app:app --reload --port 8000 & \
 	 (cd web/frontend && npm run dev) & \
 	 wait
 
@@ -37,13 +37,13 @@ docker-logs: ## Tail logs from all Docker services
 # ── Quality ──────────────────────────────────────────────────────────────────
 
 test: ## Run test suite with pytest
-	pytest tests/ --tb=short -q || [ $$? -eq 5 ]
+	python3 -m pytest tests/ --tb=short -q || [ $$? -eq 5 ]
 
 lint: ## Check code style (ruff)
-	ruff check src/ web/backend/
+	python3 -m ruff check src/ web/backend/
 
 format: ## Auto-format code (ruff)
-	ruff format src/ web/backend/
+	python3 -m ruff format src/ web/backend/
 
 # ── Utilities ────────────────────────────────────────────────────────────────
 
