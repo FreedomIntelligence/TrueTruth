@@ -12,16 +12,16 @@ from src.state.schema import WorkflowState, AppraisalResults
 # Initial GRADE points by study type (4=High, 3=Moderate, 2=Low, 1=Very Low)
 _INITIAL_POINTS: Dict[str, int] = {
     "RCT": 4,
-    "SYSTEMATIC_REVIEW": 4,   # Starts High (synthesizes RCTs or best available evidence)
-    "META_ANALYSIS": 4,        # Starts High
-    "NMA": 4,                  # Network meta-analysis: starts High
+    "SYSTEMATIC_REVIEW": 4,  # Starts High (synthesizes RCTs or best available evidence)
+    "META_ANALYSIS": 4,  # Starts High
+    "NMA": 4,  # Network meta-analysis: starts High
     "COHORT": 2,
     "CASE_CONTROL": 2,
-    "CROSS_SECTIONAL": 2,      # Observational: starts Low
-    "NARRATIVE_REVIEW": 1,     # Expert synthesis without systematic search: Very Low
+    "CROSS_SECTIONAL": 2,  # Observational: starts Low
+    "NARRATIVE_REVIEW": 1,  # Expert synthesis without systematic search: Very Low
     "CASE_REPORT": 1,
-    "GUIDELINE": 3,            # Typically based on SR: starts Moderate
-    "EXPERT_OPINION": 1,       # No systematic search: Very Low
+    "GUIDELINE": 3,  # Typically based on SR: starts Moderate
+    "EXPERT_OPINION": 1,  # No systematic search: Very Low
 }
 
 # Mapping from GRADE codes to human-readable study type labels
@@ -123,7 +123,9 @@ class AppraiseAgent(BaseAgent):
         self.prompt_template = self._load_prompt()
 
     def _load_prompt(self) -> str:
-        prompt_path = Path(__file__).parent.parent / "config" / "prompts" / "appraise_agent.txt"
+        prompt_path = (
+            Path(__file__).parent.parent / "config" / "prompts" / "appraise_agent.txt"
+        )
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -137,7 +139,11 @@ class AppraiseAgent(BaseAgent):
         for i, e in enumerate(evidence_list):
             abstract_preview = (getattr(e, "abstract", "") or "")[:200]
             study_type_hint = getattr(e, "study_type", "") or ""
-            hint_str = f"\nSource DB study_type hint: {study_type_hint}" if study_type_hint else ""
+            hint_str = (
+                f"\nSource DB study_type hint: {study_type_hint}"
+                if study_type_hint
+                else ""
+            )
             parts.append(
                 f"Evidence {i + 1}:\n"
                 f"Title: {e.title}\n"
@@ -157,7 +163,9 @@ class AppraiseAgent(BaseAgent):
         response = self.llm.invoke(prompt)
         return self._parse_json(response.content)
 
-    def _merge_appraisal_dicts(self, results: List[dict], batch_sizes: List[int]) -> dict:
+    def _merge_appraisal_dicts(
+        self, results: List[dict], batch_sizes: List[int]
+    ) -> dict:
         """
         Merge multiple batch appraisal results into a single appraisal dict.
 
@@ -175,8 +183,12 @@ class AppraiseAgent(BaseAgent):
                 global_id += 1
 
         # Conflict: pessimistic — YES wins
-        merged_conflict = {"conflicts_exist": "NO", "conflict_type": "NA",
-                           "conflict_severity": "NA", "conflict_description": None}
+        merged_conflict = {
+            "conflicts_exist": "NO",
+            "conflict_type": "NA",
+            "conflict_severity": "NA",
+            "conflict_description": None,
+        }
         for result in results:
             c = result.get("conflict_assessment", {})
             if c.get("conflicts_exist") == "YES":
@@ -194,7 +206,9 @@ class AppraiseAgent(BaseAgent):
                 best_numerical = n
 
         # Summary: join all
-        summaries = [r.get("evidence_summary", "") for r in results if r.get("evidence_summary")]
+        summaries = [
+            r.get("evidence_summary", "") for r in results if r.get("evidence_summary")
+        ]
         merged_summary = " | ".join(summaries)
 
         return {
@@ -235,8 +249,12 @@ class AppraiseAgent(BaseAgent):
                     for batch in batches
                 ]
                 batch_results = [f.result() for f in futures]
-            print(f"[TIMING] Appraise parallel batches ({len(batches)}×{_BATCH_SIZE}): {time.time()-t0:.1f}s")
-            appraisal_dict = self._merge_appraisal_dicts(batch_results, [len(b) for b in batches])
+            print(
+                f"[TIMING] Appraise parallel batches ({len(batches)}×{_BATCH_SIZE}): {time.time()-t0:.1f}s"
+            )
+            appraisal_dict = self._merge_appraisal_dicts(
+                batch_results, [len(b) for b in batches]
+            )
             print(f"[PARALLEL-APPRAISE] {len(batches)} batches completed in parallel.")
         else:
             # Single batch (≤5 articles): no need for parallel overhead
@@ -260,27 +278,33 @@ class AppraiseAgent(BaseAgent):
             graded_evidence.append(evidence)
 
             # Build rich rationale record for downstream consumers (including Judge)
-            initial_grade = _POINTS_TO_GRADE.get(_INITIAL_POINTS.get(study_type, 1), "Very Low")
-            grade_rationales.append({
-                "evidence_id": i + 1,
-                "title": evidence.title,
-                "study_type": study_type,
-                "initial_grade": initial_grade,
-                "risk_of_bias": appraisal.get("risk_of_bias", "NOT_SERIOUS"),
-                "inconsistency": appraisal.get("inconsistency", "NA"),
-                "indirectness": appraisal.get("indirectness", "NOT_SERIOUS"),
-                "imprecision": appraisal.get("imprecision", "NOT_SERIOUS"),
-                "publication_bias": appraisal.get("publication_bias", "UNDETECTED"),
-                "large_effect": appraisal.get("large_effect", "NA"),
-                "dose_response": appraisal.get("dose_response", "NA"),
-                "computed_grade": computed_grade,
-                "rationale": appraisal.get("rationale", ""),
-            })
+            initial_grade = _POINTS_TO_GRADE.get(
+                _INITIAL_POINTS.get(study_type, 1), "Very Low"
+            )
+            grade_rationales.append(
+                {
+                    "evidence_id": i + 1,
+                    "title": evidence.title,
+                    "study_type": study_type,
+                    "initial_grade": initial_grade,
+                    "risk_of_bias": appraisal.get("risk_of_bias", "NOT_SERIOUS"),
+                    "inconsistency": appraisal.get("inconsistency", "NA"),
+                    "indirectness": appraisal.get("indirectness", "NOT_SERIOUS"),
+                    "imprecision": appraisal.get("imprecision", "NOT_SERIOUS"),
+                    "publication_bias": appraisal.get("publication_bias", "UNDETECTED"),
+                    "large_effect": appraisal.get("large_effect", "NA"),
+                    "dose_response": appraisal.get("dose_response", "NA"),
+                    "computed_grade": computed_grade,
+                    "rationale": appraisal.get("rationale", ""),
+                }
+            )
 
         # --- Conflict assessment ---
         conflict = appraisal_dict.get("conflict_assessment", {})
         has_conflict = conflict.get("conflicts_exist") == "YES"
-        conflict_description = conflict.get("conflict_description") if has_conflict else None
+        conflict_description = (
+            conflict.get("conflict_description") if has_conflict else None
+        )
 
         # --- Numerical assessment ---
         numerical = appraisal_dict.get("numerical_assessment", {})
@@ -304,5 +328,6 @@ class AppraiseAgent(BaseAgent):
                 "note": numerical.get("note", ""),
             },
             # True only when there is a MAJOR conflict (influences scheduling)
-            "bias_inconsistency": has_conflict and conflict.get("conflict_severity") == "MAJOR",
+            "bias_inconsistency": has_conflict
+            and conflict.get("conflict_severity") == "MAJOR",
         }

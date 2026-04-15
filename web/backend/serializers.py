@@ -7,18 +7,20 @@ from typing import List
 def serialize_evidence_list(evidence_list) -> List[dict]:
     """Evidence list → JSON-safe list (drop full_text, truncate abstract)."""
     result = []
-    for e in (evidence_list or []):
-        result.append({
-            "title": e.title,
-            "pmid": getattr(e, "pmid", None),
-            "pmcid": getattr(e, "pmcid", None),
-            "source": getattr(e, "source", ""),
-            "study_type": getattr(e, "study_type", None),
-            "relevance_score": getattr(e, "relevance_score", 0.0),
-            "grade_level": getattr(e, "grade_level", None),
-            "abstract_preview": (getattr(e, "abstract", "") or "")[:200],
-            "key_sentences": getattr(e, "key_sentences", None),
-        })
+    for e in evidence_list or []:
+        result.append(
+            {
+                "title": e.title,
+                "pmid": getattr(e, "pmid", None),
+                "pmcid": getattr(e, "pmcid", None),
+                "source": getattr(e, "source", ""),
+                "study_type": getattr(e, "study_type", None),
+                "relevance_score": getattr(e, "relevance_score", 0.0),
+                "grade_level": getattr(e, "grade_level", None),
+                "abstract_preview": (getattr(e, "abstract", "") or "")[:200],
+                "key_sentences": getattr(e, "key_sentences", None),
+            }
+        )
     return result
 
 

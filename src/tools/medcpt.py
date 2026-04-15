@@ -8,6 +8,7 @@ Replaces LLM-based per-article relevance scoring in AcquireAgent.
 Scores are continuous [0, 1] via sigmoid(logit), much more reliable than
 LLM discrete 0.2-step scoring for information retrieval tasks.
 """
+
 from __future__ import annotations
 
 from typing import List
@@ -27,7 +28,9 @@ def _load() -> None:
 
     print("[MedCPT] Loading ncbi/MedCPT-Cross-Encoder...")
     _tokenizer = AutoTokenizer.from_pretrained("ncbi/MedCPT-Cross-Encoder")
-    _model = AutoModelForSequenceClassification.from_pretrained("ncbi/MedCPT-Cross-Encoder")
+    _model = AutoModelForSequenceClassification.from_pretrained(
+        "ncbi/MedCPT-Cross-Encoder"
+    )
     _model.eval()
 
     _device = "cuda" if torch.cuda.is_available() else "cpu"

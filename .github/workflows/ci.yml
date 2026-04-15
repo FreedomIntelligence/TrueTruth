@@ -59,8 +59,10 @@ jobs:
         # Exit code 5 = "no tests collected" — treat as pass until tests are added.
         # Real failures (exit code 1) still fail CI.
         run: |
+          set +e
           pytest tests/ --tb=short -q
           STATUS=$?
+          set -e
           [ $STATUS -eq 5 ] && exit 0 || exit $STATUS
         shell: bash
 

@@ -3,6 +3,7 @@ from pathlib import Path
 from src.agents.base import BaseAgent, robust_parse_json
 from src.state.schema import WorkflowState, PICOQuery
 
+
 class AskAgent(BaseAgent):
     """Agent for refining clinical questions into PICO format"""
 
@@ -12,8 +13,10 @@ class AskAgent(BaseAgent):
 
     def _load_prompt(self) -> str:
         """Load prompt template from file"""
-        prompt_path = Path(__file__).parent.parent / "config" / "prompts" / "ask_agent.txt"
-        with open(prompt_path, 'r', encoding='utf-8') as f:
+        prompt_path = (
+            Path(__file__).parent.parent / "config" / "prompts" / "ask_agent.txt"
+        )
+        with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
 
     def _parse_json(self, content: str) -> dict:
@@ -29,8 +32,7 @@ class AskAgent(BaseAgent):
             backtrack_context = f"Previous attempt failed: {state['backtrack_reason']}\nPlease refine the question."
 
         prompt = self.prompt_template.format(
-            question=question,
-            backtrack_context=backtrack_context
+            question=question, backtrack_context=backtrack_context
         )
 
         response = self.llm.invoke(prompt)
@@ -41,7 +43,7 @@ class AskAgent(BaseAgent):
             intervention=pico_dict["intervention"],
             comparison=pico_dict["comparison"],
             outcome=pico_dict["outcome"],
-            keywords=pico_dict["keywords"]
+            keywords=pico_dict["keywords"],
         )
 
         question_type = pico_dict.get("question_type", "Therapy")

@@ -5,6 +5,7 @@ from pathlib import Path
 from dataclasses import asdict, is_dataclass
 from src.state.schema import SchedulingDecision, Observe, WorkflowState
 
+
 class SchedulingLLM:
     """Scheduling LLM that makes decisions based on observe"""
 
@@ -16,19 +17,18 @@ class SchedulingLLM:
             llm: Language model instance
         """
         self.llm = llm
-        self.prompt_path = Path(__file__).parent.parent / "config" / "prompts" / "scheduling_llm.txt"
+        self.prompt_path = (
+            Path(__file__).parent.parent / "config" / "prompts" / "scheduling_llm.txt"
+        )
         self.prompt_template = self._load_prompt()
 
     def _load_prompt(self) -> str:
         """Load scheduling prompt template"""
-        with open(self.prompt_path, 'r', encoding='utf-8') as f:
+        with open(self.prompt_path, "r", encoding="utf-8") as f:
             return f.read()
 
     def make_decision(
-        self,
-        observe: Observe,
-        state: WorkflowState,
-        soft_gate_signals: List[str]
+        self, observe: Observe, state: WorkflowState, soft_gate_signals: List[str]
     ) -> SchedulingDecision:
         """
         Make scheduling decision based on observe
@@ -62,31 +62,32 @@ class SchedulingLLM:
         decision = SchedulingDecision(
             reasoning=decision_dict["reasoning"],
             action=decision_dict["action"],
-            parameters=decision_dict.get("parameters")
+            parameters=decision_dict.get("parameters"),
         )
 
         return decision
 
     def _prepare_context(
-        self,
-        observe: Observe,
-        state: WorkflowState,
-        soft_gate_signals: List[str]
+        self, observe: Observe, state: WorkflowState, soft_gate_signals: List[str]
     ) -> Dict[str, Any]:
         """Prepare context for scheduling prompt"""
 
         # Format dimension scores
-        dimension_scores_str = "\n".join([
-            f"  - {dim}: {score:.2f}"
-            for dim, score in observe.evaluation.dimension_scores.items()
-        ])
+        dimension_scores_str = "\n".join(
+            [
+                f"  - {dim}: {score:.2f}"
+                for dim, score in observe.evaluation.dimension_scores.items()
+            ]
+        )
 
         # Format issues
         if observe.evaluation.issues:
-            issues_str = "\n".join([
-                f"  - [{issue.severity.upper()}] {issue.dimension}: {issue.description}"
-                for issue in observe.evaluation.issues
-            ])
+            issues_str = "\n".join(
+                [
+                    f"  - [{issue.severity.upper()}] {issue.dimension}: {issue.description}"
+                    for issue in observe.evaluation.issues
+                ]
+            )
         else:
             issues_str = "  无问题"
 
@@ -115,24 +116,32 @@ class SchedulingLLM:
                     if isinstance(ev, dict):
                         ev.pop("abstract", None)
 
-        raw_output_str = json.dumps(serializable_output, ensure_ascii=False, indent=2, default=str)
+        raw_output_str = json.dumps(
+            serializable_output, ensure_ascii=False, indent=2, default=str
+        )
         # Cap at 3000 chars — enough for the scheduler to understand what was produced
         # without sending thousands of tokens of evidence abstracts
-        stage_output_str = raw_output_str[:3000] + ("..." if len(raw_output_str) > 3000 else "")
+        stage_output_str = raw_output_str[:3000] + (
+            "..." if len(raw_output_str) > 3000 else ""
+        )
 
         context = {
             "original_question": state["original_question"],
             "current_stage": observe.stage,
             "current_iteration": state["iteration_count"],
-            "remaining_budget": state.get("remaining_budget", 20 - state["iteration_count"]),
+            "remaining_budget": state.get(
+                "remaining_budget", 20 - state["iteration_count"]
+            ),
             "stage_output": stage_output_str,
             "overall_score": observe.evaluation.overall_score,
             "pass_threshold": "是" if observe.evaluation.pass_threshold else "否",
             "dimension_scores": dimension_scores_str,
             "issues": issues_str,
             "summary": observe.evaluation.summary,
-            "soft_gate_signals": ", ".join(soft_gate_signals) if soft_gate_signals else "无",
-            "execution_history_summary": history_summary
+            "soft_gate_signals": ", ".join(soft_gate_signals)
+            if soft_gate_signals
+            else "无",
+            "execution_history_summary": history_summary,
         }
 
         return context
@@ -153,7 +162,9 @@ class SchedulingLLM:
             lines.append(f"  {status} {node.agent_type} (迭代 {node.id})")
 
             if node.observe:
-                lines.append(f"    评分: {node.observe.evaluation.overall_score:.2f}, 通过: {node.observe.evaluation.pass_threshold}")
+                lines.append(
+                    f"    评分: {node.observe.evaluation.overall_score:.2f}, 通过: {node.observe.evaluation.pass_threshold}"
+                )
 
             if node.scheduling_decision:
                 lines.append(f"    决策: {node.scheduling_decision.action}")
@@ -163,7 +174,9 @@ class SchedulingLLM:
         if backtrack_history:
             lines.append("\n  回退历史:")
             for bt in backtrack_history[-3:]:
-                lines.append(f"    - 从 {bt['from_stage']} 回退到 {bt['to_stage']}: {bt['reason']}")
+                lines.append(
+                    f"    - 从 {bt['from_stage']} 回退到 {bt['to_stage']}: {bt['reason']}"
+                )
 
         return "\n".join(lines)
 
@@ -184,6 +197,7 @@ class SchedulingLLM:
         regex-based field extraction for the common case where the LLM embeds
         unescaped ASCII double-quote characters inside the ``reasoning`` string.
         """
+
         def _try_parse(s: str):
             try:
                 return json.loads(s)
@@ -208,8 +222,8 @@ class SchedulingLLM:
                 return result
 
         # Try raw JSON object extraction
-        start = response.find('{')
-        end = response.rfind('}') + 1
+        start = response.find("{")
+        end = response.rfind("}") + 1
         if start >= 0 and end > start:
             result = _try_parse(response[start:end])
             if result is not None:
@@ -222,7 +236,9 @@ class SchedulingLLM:
         if action_match:
             action = action_match.group(1)
             params: Dict[str, Any] = {}
-            params_match = re.search(r'"parameters"\s*:\s*(\{.*?\})', response, re.DOTALL)
+            params_match = re.search(
+                r'"parameters"\s*:\s*(\{.*?\})', response, re.DOTALL
+            )
             if params_match:
                 try:
                     params = json.loads(params_match.group(1))

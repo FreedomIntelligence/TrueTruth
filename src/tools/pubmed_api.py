@@ -68,7 +68,7 @@ class PubMedClient:
             "retmax": max_results,
             "retmode": "json",
             "sort": "relevance",
-            "email": self.email
+            "email": self.email,
         }
 
         response = requests.get(url, params=params)
@@ -87,19 +87,20 @@ class PubMedClient:
             "id": ",".join(pmids),
             "retmode": "xml",
             "rettype": "abstract",
-            "email": self.email
+            "email": self.email,
         }
 
         response = requests.get(url, params=params)
         response.raise_for_status()
 
         import xml.etree.ElementTree as ET
+
         root = ET.fromstring(response.content)
 
         abstracts = {}
-        for article in root.findall('.//PubmedArticle'):
-            pmid_elem = article.find('.//PMID')
-            abstract_elem = article.find('.//Abstract/AbstractText')
+        for article in root.findall(".//PubmedArticle"):
+            pmid_elem = article.find(".//PMID")
+            abstract_elem = article.find(".//Abstract/AbstractText")
 
             if pmid_elem is not None:
                 pmid = pmid_elem.text
@@ -118,7 +119,7 @@ class PubMedClient:
             "db": "pubmed",
             "id": ",".join(pmids),
             "retmode": "json",
-            "email": self.email
+            "email": self.email,
         }
 
         response = requests.get(url, params=params)
@@ -126,7 +127,9 @@ class PubMedClient:
         return response.json()
 
 
-def search_pubmed(query: str, max_results: int = 5, email: str = None) -> List[Evidence]:
+def search_pubmed(
+    query: str, max_results: int = 5, email: str = None
+) -> List[Evidence]:
     """Search PubMed and return Evidence objects.
 
     Results are cached on disk for 24 hours so that repeated identical queries
@@ -136,7 +139,9 @@ def search_pubmed(query: str, max_results: int = 5, email: str = None) -> List[E
     key = _cache_key(query, max_results)
     cached = _load_cache(key)
     if cached is not None:
-        print(f"[CACHE HIT] PubMed cache — skipping network fetch ({len(cached)} articles)")
+        print(
+            f"[CACHE HIT] PubMed cache — skipping network fetch ({len(cached)} articles)"
+        )
         return cached
 
     client = PubMedClient(email=email)
@@ -173,7 +178,7 @@ def search_pubmed(query: str, max_results: int = 5, email: str = None) -> List[E
             relevance_score=1.0,
             study_type=None,
             publication_date=pub_date,
-            grade_level=None
+            grade_level=None,
         )
         evidence_list.append(evidence)
 

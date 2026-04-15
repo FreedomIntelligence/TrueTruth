@@ -54,7 +54,10 @@ def _load_embed_model():
     global _embed_model_cache
     if _embed_model_cache is None:
         from sentence_transformers import SentenceTransformer
-        _embed_model_cache = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+        _embed_model_cache = SentenceTransformer(
+            "sentence-transformers/all-MiniLM-L6-v2"
+        )
     return _embed_model_cache
 
 
@@ -62,6 +65,7 @@ def _load_chroma():
     global _chroma_collection_cache
     if _chroma_collection_cache is None:
         import chromadb
+
         client = chromadb.PersistentClient(path=str(_CHROMA_DIR))
         _chroma_collection_cache = client.get_collection("obstetrics_evidence")
     return _chroma_collection_cache
@@ -97,7 +101,7 @@ def _extract_spans(abstract_text: str, query_keywords: List[str]) -> Optional[st
         return None
 
     keywords_lower = [kw.lower() for kw in query_keywords if kw]
-    sentences = [s.strip() for s in re.split(r'[.!?。]+', abstract_text) if s.strip()]
+    sentences = [s.strip() for s in re.split(r"[.!?。]+", abstract_text) if s.strip()]
     if not sentences:
         return None
 
@@ -127,7 +131,7 @@ def _extract_spans(abstract_text: str, query_keywords: List[str]) -> Optional[st
                 span_sents.append(sentences[j])
                 span_max = max(span_max, scores[j])
                 j += 1
-            spans.append((' '.join(span_sents), span_max))
+            spans.append((" ".join(span_sents), span_max))
             i = j
         else:
             i += 1
@@ -138,7 +142,7 @@ def _extract_spans(abstract_text: str, query_keywords: List[str]) -> Optional[st
     # Sort by max sentence score descending, take top 3, cap each at 200 chars
     spans.sort(key=lambda x: x[1], reverse=True)
     top = [s[:200] for s, _ in spans[:3]]
-    return ' … '.join(top)
+    return " … ".join(top)
 
 
 def search_local(query: str, top_k: int = 20) -> List[Evidence]:
@@ -207,18 +211,22 @@ def search_local(query: str, top_k: int = 20) -> List[Evidence]:
             continue
         # Linear rank-normalized score: rank 0 → 1.0, rank n-1 → 0.1
         relevance = round(1.0 - (rank / max(n, 1)) * 0.9, 3) if n > 1 else 1.0
-        results.append(Evidence(
-            title=a.get("title", ""),
-            source=a.get("journal", "PMC"),
-            pmid=a.get("pmid"),
-            abstract=a.get("abstract", ""),
-            relevance_score=relevance,
-            study_type=None,            # inferred later by AcquireAgent._infer_study_type()
-            publication_date=a.get("publication_date"),
-            grade_level=None,
-            pmcid=pmcid,
-            full_text=a.get("full_text"),  # used only at retrieval stage; not in prompts
-            key_sentences=_extract_spans(a.get("abstract", ""), tokens),
-        ))
+        results.append(
+            Evidence(
+                title=a.get("title", ""),
+                source=a.get("journal", "PMC"),
+                pmid=a.get("pmid"),
+                abstract=a.get("abstract", ""),
+                relevance_score=relevance,
+                study_type=None,  # inferred later by AcquireAgent._infer_study_type()
+                publication_date=a.get("publication_date"),
+                grade_level=None,
+                pmcid=pmcid,
+                full_text=a.get(
+                    "full_text"
+                ),  # used only at retrieval stage; not in prompts
+                key_sentences=_extract_spans(a.get("abstract", ""), tokens),
+            )
+        )
 
     return results

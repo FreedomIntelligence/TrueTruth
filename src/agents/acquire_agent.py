@@ -19,9 +19,9 @@ _HSSS_FILTER = (
 # Diagnostic Test Accuracy (DTA) filter for Diagnosis questions.
 # Targets sensitivity, specificity, ROC, likelihood ratio, and QUADAS studies.
 _DTA_FILTER = (
-    "(sensitivity[tiab] OR specificity[tiab] OR \"diagnostic accuracy\"[tiab] "
-    "OR \"likelihood ratio\"[tiab] OR \"ROC curve\"[tiab] OR \"area under the curve\"[tiab] "
-    "OR QUADAS[tiab] OR \"diagnostic test\"[tiab] OR \"predictive value\"[tiab] "
+    '(sensitivity[tiab] OR specificity[tiab] OR "diagnostic accuracy"[tiab] '
+    'OR "likelihood ratio"[tiab] OR "ROC curve"[tiab] OR "area under the curve"[tiab] '
+    'OR QUADAS[tiab] OR "diagnostic test"[tiab] OR "predictive value"[tiab] '
     "OR systematic[sb])"
 )
 
@@ -29,8 +29,8 @@ _DTA_FILTER = (
 # Allows cohort studies; keeps systematic reviews; drops RCT bias.
 _OBSERVATIONAL_FILTER = (
     "(cohort[tiab] OR prospective[tiab] OR retrospective[tiab] "
-    "OR \"follow-up\"[tiab] OR prognosis[tiab] OR survival[tiab] "
-    "OR \"risk factor\"[tiab] OR incidence[tiab] OR mortality[tiab] "
+    'OR "follow-up"[tiab] OR prognosis[tiab] OR survival[tiab] '
+    'OR "risk factor"[tiab] OR incidence[tiab] OR mortality[tiab] '
     "OR systematic[sb])"
 )
 
@@ -86,10 +86,10 @@ class AcquireAgent(BaseAgent):
             remainder = content[query_start:].strip()
             if "```" in remainder:
                 cb_start = remainder.find("```")
-                after_backticks = remainder[cb_start + 3:]
+                after_backticks = remainder[cb_start + 3 :]
                 newline = after_backticks.find("\n")
                 if newline >= 0:
-                    after_backticks = after_backticks[newline + 1:]
+                    after_backticks = after_backticks[newline + 1 :]
                 cb_end = after_backticks.find("```")
                 if cb_end >= 0:
                     return after_backticks[:cb_end].strip()
@@ -114,9 +114,15 @@ class AcquireAgent(BaseAgent):
         text = f"{evidence.title} {evidence.abstract or ''}".lower()
         if "systematic review" in text or "meta-analysis" in text:
             return "Systematic Review"
-        if ("randomized controlled trial" in text or "randomised controlled trial" in text or
-                "randomized clinical trial" in text or "randomised clinical trial" in text or
-                "rct" in text or " randomized " in text or " randomised " in text):
+        if (
+            "randomized controlled trial" in text
+            or "randomised controlled trial" in text
+            or "randomized clinical trial" in text
+            or "randomised clinical trial" in text
+            or "rct" in text
+            or " randomized " in text
+            or " randomised " in text
+        ):
             return "RCT"
         if "cohort study" in text or "cohort" in text:
             return "Cohort Study"
@@ -153,7 +159,9 @@ class AcquireAgent(BaseAgent):
         lines = []
         for i, e in enumerate(candidates):
             study_hint = f"[{e.study_type}] " if e.study_type else ""
-            abstract_preview = e.key_sentences if e.key_sentences else (e.abstract or "")[:150]
+            abstract_preview = (
+                e.key_sentences if e.key_sentences else (e.abstract or "")[:150]
+            )
             lines.append(
                 f"[{i + 1}] {study_hint}{e.title}\n"
                 f"     Abstract: {abstract_preview}"
@@ -171,7 +179,9 @@ class AcquireAgent(BaseAgent):
         )
 
         response = self.llm.invoke(prompt)
-        print(f"[DEBUG] Listwise ranking response (first 300 chars): {response.content[:300]}")
+        print(
+            f"[DEBUG] Listwise ranking response (first 300 chars): {response.content[:300]}"
+        )
 
         # Parse ranked IDs, validate, deduplicate
         try:
@@ -239,18 +249,24 @@ class AcquireAgent(BaseAgent):
         try:
             t0 = time.time()
             if self._use_local_db(question_type):
-                print(f"[DEBUG] question_type={question_type}, routing to local obstetrics DB")
+                print(
+                    f"[DEBUG] question_type={question_type}, routing to local obstetrics DB"
+                )
                 raw_results = search_local(query=base_query, top_k=20)
                 search_query_used = base_query
                 print(f"[DEBUG] Local DB returned {len(raw_results)} articles")
                 print(f"[TIMING] Local DB search: {time.time()-t0:.1f}s")
             else:
                 filtered_query = self._apply_search_filter(base_query, question_type)
-                print(f"[DEBUG] question_type={question_type}, filtered query: {filtered_query}")
+                print(
+                    f"[DEBUG] question_type={question_type}, filtered query: {filtered_query}"
+                )
                 raw_results = search_pubmed(query=filtered_query, max_results=20)
                 print(f"[DEBUG] PubMed (filtered) returned {len(raw_results)} articles")
                 if len(raw_results) == 0:
-                    print("[DEBUG] Filtered query returned 0 results — falling back to base query")
+                    print(
+                        "[DEBUG] Filtered query returned 0 results — falling back to base query"
+                    )
                     raw_results = search_pubmed(query=base_query, max_results=20)
                     print(f"[DEBUG] PubMed (base) returned {len(raw_results)} articles")
                     search_query_used = base_query

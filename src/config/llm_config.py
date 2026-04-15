@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 def get_llm(temperature: float = 0.0) -> ChatOpenAI:
     """
     Get configured LLM instance for main agent tasks.
@@ -18,7 +19,7 @@ def get_llm(temperature: float = 0.0) -> ChatOpenAI:
         base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
         api_key=os.getenv("LLM_API_KEY", ""),
         model=os.getenv("LLM_MODEL", "gpt-4"),
-        temperature=temperature
+        temperature=temperature,
     )
 
 
@@ -39,5 +40,5 @@ def get_fast_llm(temperature: float = 0.0) -> ChatOpenAI:
         base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
         api_key=os.getenv("LLM_API_KEY", ""),
         model=os.getenv("FAST_LLM_MODEL", os.getenv("LLM_MODEL", "gpt-4")),
-        temperature=temperature
+        temperature=temperature,
     )

@@ -1,6 +1,7 @@
 from typing import Optional, List
 from src.state.schema import WorkflowState, GateTrigger
 
+
 def check_max_iterations_gate(state: WorkflowState) -> Optional[GateTrigger]:
     """Check if maximum iterations exceeded"""
     iteration_count = state.get("iteration_count", 0)
@@ -14,8 +15,8 @@ def check_max_iterations_gate(state: WorkflowState) -> Optional[GateTrigger]:
             output_message={
                 "status": "max_iterations_exceeded",
                 "message": "系统已达到最大迭代次数限制（20次），无法继续。",
-                "iteration_count": iteration_count
-            }
+                "iteration_count": iteration_count,
+            },
         )
 
     for agent, count in agent_call_counts.items():
@@ -28,10 +29,11 @@ def check_max_iterations_gate(state: WorkflowState) -> Optional[GateTrigger]:
                     "status": "max_agent_calls_exceeded",
                     "message": f"阶段 {agent} 已被调用 {count} 次，超过单阶段限制（5次）。",
                     "agent": agent,
-                    "call_count": count
-                }
+                    "call_count": count,
+                },
             )
     return None
+
 
 def check_dead_loop_gate(state: WorkflowState) -> Optional[GateTrigger]:
     """Check if system is stuck in a dead loop"""
@@ -53,11 +55,12 @@ def check_dead_loop_gate(state: WorkflowState) -> Optional[GateTrigger]:
             output_message={
                 "status": "dead_loop_detected",
                 "message": f"系统陷入死循环，连续3次回退到 {to_stages[0]} 阶段。",
-                "loop_stage": to_stages[0]
-            }
+                "loop_stage": to_stages[0],
+            },
         )
 
     return None
+
 
 def check_critical_issue_gate(state: WorkflowState) -> Optional[GateTrigger]:
     """Check if current observe has critical issues"""
@@ -70,7 +73,8 @@ def check_critical_issue_gate(state: WorkflowState) -> Optional[GateTrigger]:
 
     # Check for critical issues
     critical_issues = [
-        issue for issue in current_observe.evaluation.issues
+        issue
+        for issue in current_observe.evaluation.issues
         if issue.severity == "critical"
     ]
 
@@ -83,16 +87,14 @@ def check_critical_issue_gate(state: WorkflowState) -> Optional[GateTrigger]:
                 "status": "critical_issue",
                 "message": "发现致命问题，需要立即处理。",
                 "issues": [
-                    {
-                        "dimension": issue.dimension,
-                        "description": issue.description
-                    }
+                    {"dimension": issue.dimension, "description": issue.description}
                     for issue in critical_issues
-                ]
-            }
+                ],
+            },
         )
 
     return None
+
 
 def check_evidence_insufficiency_gate(state: WorkflowState) -> Optional[GateTrigger]:
     """Check if evidence is severely insufficient (graceful failure)"""
@@ -111,8 +113,8 @@ def check_evidence_insufficiency_gate(state: WorkflowState) -> Optional[GateTrig
                     "status": "evidence_insufficient",
                     "message": "未找到足够的循证医学证据支持该临床问题。建议：1) 重新定义问题；2) 咨询专家意见；3) 考虑其他证据来源。",
                     "attempts": acquire_attempts,
-                    "evidence_count": 0
-                }
+                    "evidence_count": 0,
+                },
             )
 
     # Scenario 2: Appraise stage found ALL evidence is Very Low quality AND no
@@ -128,17 +130,23 @@ def check_evidence_insufficiency_gate(state: WorkflowState) -> Optional[GateTrig
             grade_distribution: dict = {}
             for e in appraisal.evidence:
                 if e.grade_level:
-                    grade_distribution[e.grade_level] = grade_distribution.get(e.grade_level, 0) + 1
+                    grade_distribution[e.grade_level] = (
+                        grade_distribution.get(e.grade_level, 0) + 1
+                    )
 
             total_evidence = sum(grade_distribution.values())
             very_low_count = grade_distribution.get("Very Low", 0)
-            has_better_evidence = total_evidence > very_low_count  # at least one non-VL article
+            has_better_evidence = (
+                total_evidence > very_low_count
+            )  # at least one non-VL article
 
             # Only terminate if 100% Very Low AND at least 5 articles appraised
             # AND we have already tried Acquire twice — meaning re-searching won't help
-            if (total_evidence >= 5
-                    and not has_better_evidence
-                    and very_low_count / total_evidence == 1.0):
+            if (
+                total_evidence >= 5
+                and not has_better_evidence
+                and very_low_count / total_evidence == 1.0
+            ):
                 return GateTrigger(
                     gate_name="insufficient_evidence_quality",
                     reason="所有证据质量均为Very Low（经多次检索后确认）",
@@ -146,11 +154,12 @@ def check_evidence_insufficiency_gate(state: WorkflowState) -> Optional[GateTrig
                     output_message={
                         "status": "evidence_quality_insufficient",
                         "message": "现有证据质量极低（Very Low），无法支持可靠的临床推荐。建议等待更高质量的研究发表。",
-                        "grade_distribution": grade_distribution
-                    }
+                        "grade_distribution": grade_distribution,
+                    },
                 )
 
     return None
+
 
 def collect_soft_gate_signals(state: WorkflowState) -> List[str]:
     """Collect soft gate signals that don't force termination but inform scheduling"""
@@ -185,7 +194,8 @@ def collect_soft_gate_signals(state: WorkflowState) -> List[str]:
 
     # Check for major issues
     major_issues = [
-        issue for issue in current_observe.evaluation.issues
+        issue
+        for issue in current_observe.evaluation.issues
         if issue.severity == "major"
     ]
     if len(major_issues) >= 2:
@@ -193,13 +203,14 @@ def collect_soft_gate_signals(state: WorkflowState) -> List[str]:
 
     return signals
 
+
 def check_hard_gates(state: WorkflowState) -> Optional[GateTrigger]:
     """Check all hard gates in priority order"""
     gates = [
         check_max_iterations_gate,
         check_dead_loop_gate,
         check_critical_issue_gate,
-        check_evidence_insufficiency_gate
+        check_evidence_insufficiency_gate,
     ]
 
     for gate_func in gates:

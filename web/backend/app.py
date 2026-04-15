@@ -26,7 +26,10 @@ from web.backend.event_types import SSEEvent, EventType
 from web.backend import log_capture as _lc
 
 import os
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+_PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 
 app = FastAPI(title="TrueTruth Clinical Decision Support", version="1.0.0")
 
@@ -48,6 +51,7 @@ _sessions: dict = {}
 # Models
 # ---------------------------------------------------------------------------
 
+
 class SessionRequest(BaseModel):
     question: str
 
@@ -55,6 +59,7 @@ class SessionRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/health")
 async def health():
@@ -74,7 +79,9 @@ async def create_session(req: SessionRequest):
 async def run_workflow_sse(request: Request, session_id: str):
     question = _sessions.pop(session_id, None)
     if question is None:
-        raise HTTPException(status_code=404, detail="session_id not found or already consumed")
+        raise HTTPException(
+            status_code=404, detail="session_id not found or already consumed"
+        )
 
     loop = asyncio.get_event_loop()
     event_queue: asyncio.Queue = asyncio.Queue()

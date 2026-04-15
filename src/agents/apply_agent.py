@@ -3,6 +3,7 @@ from pathlib import Path
 from src.agents.base import BaseAgent, robust_parse_json
 from src.state.schema import WorkflowState, Recommendation
 
+
 class ApplyAgent(BaseAgent):
     """Agent for generating clinical recommendations"""
 
@@ -12,8 +13,10 @@ class ApplyAgent(BaseAgent):
 
     def _load_prompt(self) -> str:
         """Load prompt template from file"""
-        prompt_path = Path(__file__).parent.parent / "config" / "prompts" / "apply_agent.txt"
-        with open(prompt_path, 'r', encoding='utf-8') as f:
+        prompt_path = (
+            Path(__file__).parent.parent / "config" / "prompts" / "apply_agent.txt"
+        )
+        with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
 
     def _parse_json(self, content: str) -> dict:
@@ -32,16 +35,18 @@ class ApplyAgent(BaseAgent):
         if state.get("backtrack_reason"):
             backtrack_context = f"Previous attempt failed: {state['backtrack_reason']}\nPlease address these issues in your recommendation."
 
-        evidence_summary = "\n\n".join([
-            f"Evidence {i+1}:\nTitle: {e.title}\nQuality: {e.grade_level}\nSource: {e.source}"
-            for i, e in enumerate(appraisal.evidence)
-        ])
+        evidence_summary = "\n\n".join(
+            [
+                f"Evidence {i+1}:\nTitle: {e.title}\nQuality: {e.grade_level}\nSource: {e.source}"
+                for i, e in enumerate(appraisal.evidence)
+            ]
+        )
 
         prompt = self.prompt_template.format(
             question=question,
             evidence_summary=evidence_summary,
             appraisal_summary=appraisal.summary,
-            backtrack_context=backtrack_context
+            backtrack_context=backtrack_context,
         )
 
         response = self.llm.invoke(prompt)
@@ -50,7 +55,9 @@ class ApplyAgent(BaseAgent):
         except ValueError:
             # LLM may output reasoning only without JSON (response truncated or forgot JSON).
             # Retry once with a short follow-up prompt asking only for the JSON block.
-            print("[WARN] Apply agent: JSON parse failed on first response, retrying for JSON only.")
+            print(
+                "[WARN] Apply agent: JSON parse failed on first response, retrying for JSON only."
+            )
             retry_prompt = (
                 "Your previous response did not include a valid JSON block. "
                 "Please output ONLY the following JSON (no reasoning, no extra text):\n\n"
@@ -91,7 +98,7 @@ class ApplyAgent(BaseAgent):
             strength=strength,
             rationale=rec_dict["rationale"],
             caveats=rec_dict.get("caveats", []),
-            evidence_quality=evidence_quality
+            evidence_quality=evidence_quality,
         )
 
         return {"recommendation": recommendation}

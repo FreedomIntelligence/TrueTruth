@@ -1,15 +1,23 @@
 from typing import Dict, Any, Optional
 import time
 from datetime import datetime
-from src.state.schema import WorkflowState, ExecutionNode, HumanInterventionRequest, SchedulingDecision
+from src.state.schema import (
+    WorkflowState,
+    ExecutionNode,
+    HumanInterventionRequest,
+    SchedulingDecision,
+)
 from src.coordinator.gate_engine import check_hard_gates, collect_soft_gate_signals
 from src.judge.judge_llm import JudgeLLM
 from src.scheduling.scheduling_llm import SchedulingLLM
 
+
 class Coordinator:
     """Central coordinator for the EBM 5A workflow"""
 
-    def __init__(self, agents: Dict[str, Any], judge_llm: JudgeLLM, scheduling_llm: SchedulingLLM):
+    def __init__(
+        self, agents: Dict[str, Any], judge_llm: JudgeLLM, scheduling_llm: SchedulingLLM
+    ):
         """
         Initialize coordinator with agents and LLMs
 
@@ -45,7 +53,7 @@ class Coordinator:
             human_intervention_requests=[],
             remaining_budget=20,
             soft_gate_signals=[],
-            question_type=None
+            question_type=None,
         )
 
     def execute_agent(self, agent_name: str, state: WorkflowState) -> WorkflowState:
@@ -53,7 +61,9 @@ class Coordinator:
         agent = self.agents[agent_name]
 
         # Update agent call count
-        state["agent_call_counts"][agent_name] = state["agent_call_counts"].get(agent_name, 0) + 1
+        state["agent_call_counts"][agent_name] = (
+            state["agent_call_counts"].get(agent_name, 0) + 1
+        )
         state["iteration_count"] += 1
         state["remaining_budget"] = 20 - state["iteration_count"]
 
@@ -85,7 +95,7 @@ class Coordinator:
             gate_triggered=None,
             status="completed",
             observe=observe,
-            scheduling_decision=None
+            scheduling_decision=None,
         )
         state["execution_history"].append(node)
 
@@ -113,7 +123,9 @@ class Coordinator:
 
         return None
 
-    def handle_scheduling_decision(self, state: WorkflowState, decision) -> WorkflowState:
+    def handle_scheduling_decision(
+        self, state: WorkflowState, decision
+    ) -> WorkflowState:
         """Handle scheduling decision"""
         action = decision.action
 
@@ -127,12 +139,14 @@ class Coordinator:
             target_stage = action.replace("backtrack_to_", "").capitalize()
 
             # Record backtrack
-            state["backtrack_history"].append({
-                "from_stage": state["current_step"],
-                "to_stage": target_stage,
-                "reason": decision.reasoning,
-                "timestamp": datetime.now()
-            })
+            state["backtrack_history"].append(
+                {
+                    "from_stage": state["current_step"],
+                    "to_stage": target_stage,
+                    "reason": decision.reasoning,
+                    "timestamp": datetime.now(),
+                }
+            )
 
             state["current_step"] = target_stage
             state["backtrack_reason"] = decision.reasoning
@@ -153,7 +167,7 @@ class Coordinator:
                 reason=params.get("reason", decision.reasoning),
                 context=params.get("context", {}),
                 resume_after_review=params.get("resume_after_review", True),
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             state["human_intervention_requests"].append(request)
 
@@ -199,7 +213,9 @@ class Coordinator:
                     state["should_terminate"] = True
                     if gate_trigger.output_message:
                         print(f"\n{'='*80}")
-                        print(f"WORKFLOW TERMINATED: {gate_trigger.output_message.get('status')}")
+                        print(
+                            f"WORKFLOW TERMINATED: {gate_trigger.output_message.get('status')}"
+                        )
                         print(f"{'='*80}")
                         print(f"Message: {gate_trigger.output_message.get('message')}")
                         print(f"{'='*80}\n")
@@ -229,7 +245,9 @@ class Coordinator:
                     action="proceed",
                     parameters=None,
                 )
-                print(f"[FAST-PATH] Stage {current_step} passed with no critical/major issues — auto-proceeding.")
+                print(
+                    f"[FAST-PATH] Stage {current_step} passed with no critical/major issues — auto-proceeding."
+                )
 
             elif current_observe.evaluation.pass_threshold and has_critical_or_major:
                 # Fast-path Rule 2: pass_threshold=True but the current major issue
@@ -242,13 +260,15 @@ class Coordinator:
                 )
                 # Collect all previous same-stage observations (excluding current)
                 prev_same_stage_obs = [
-                    obs for obs in state["observe_history"][:-1]
+                    obs
+                    for obs in state["observe_history"][:-1]
                     if getattr(obs, "stage", None) == current_step
                 ]
 
                 # Check whether current dims appeared in ANY prior same-stage attempt
                 dims_seen_before = any(
-                    current_major_dims == frozenset(
+                    current_major_dims
+                    == frozenset(
                         getattr(issue, "dimension", "")
                         for issue in obs.evaluation.issues
                         if getattr(issue, "severity", "") in ("critical", "major")
@@ -274,9 +294,11 @@ class Coordinator:
                     decision = self.scheduling_llm.make_decision(
                         observe=current_observe,
                         state=state,
-                        soft_gate_signals=soft_gate_signals
+                        soft_gate_signals=soft_gate_signals,
                     )
-                    print(f"[TIMING] Scheduling ({current_step}): {time.time()-t0:.1f}s")
+                    print(
+                        f"[TIMING] Scheduling ({current_step}): {time.time()-t0:.1f}s"
+                    )
 
             else:
                 # fail_threshold → Make scheduling decision using Scheduling LLM
@@ -284,7 +306,7 @@ class Coordinator:
                 decision = self.scheduling_llm.make_decision(
                     observe=current_observe,
                     state=state,
-                    soft_gate_signals=soft_gate_signals
+                    soft_gate_signals=soft_gate_signals,
                 )
                 sched_elapsed = time.time() - t0
                 print(f"[TIMING] Scheduling ({current_step}): {sched_elapsed:.1f}s")
@@ -304,5 +326,7 @@ class Coordinator:
                 break
 
         total_elapsed = time.time() - workflow_start
-        print(f"\n[TIMING] Total workflow time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)")
+        print(
+            f"\n[TIMING] Total workflow time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)"
+        )
         return state
