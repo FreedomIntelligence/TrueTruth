@@ -18,3 +18,4 @@ logs/
 .claude/
 gemini文本生图.py
 nul
+.worktrees/
