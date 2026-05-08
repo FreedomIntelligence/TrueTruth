@@ -1,9 +1,14 @@
-from typing import List, Dict, Any
+from __future__ import annotations
+
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 from src.agents.base import BaseAgent, robust_parse_json
-from src.state.schema import WorkflowState, Evidence
-from src.tools.pubmed_api import search_pubmed
+from src.state.schema import EBMQuery, WorkflowState, Evidence
+from src.tools.pubmed_api import fetch_pmc_full_text, search_pubmed
 from src.tools.local_evidence_db import search_local
 
 # Cochrane Handbook Highly Sensitive Search Strategy (HSSS) —
@@ -43,8 +48,37 @@ _FILTER_BY_QUESTION_TYPE = {
     "Harm": _OBSERVATIONAL_FILTER,
 }
 
+# Map EBMQuery route_type to the appropriate PubMed filter
+_FILTER_BY_ROUTE_TYPE = {
+    "ebm_pico": _HSSS_FILTER,
+    "ebm_peo": _OBSERVATIONAL_FILTER,
+    "ebm_pird": _DTA_FILTER,
+    "ebm_prognosis": _OBSERVATIONAL_FILTER,
+    "full_pipeline": _HSSS_FILTER,  # default for generic full_pipeline
+}
+
 # Number of top-K articles to select via listwise ranking.
 _TOP_K = 10
+
+# ---------------------------------------------------------------------------
+# Lazy-loaded sentence-transformer for RAG reranking
+# ---------------------------------------------------------------------------
+_embedding_model = None
+_embedding_lock = threading.Lock()
+
+
+def _get_embedding_model():
+    """Return a shared SentenceTransformer instance (thread-safe lazy init)."""
+    global _embedding_model  # noqa: PLW0603
+    if _embedding_model is None:
+        with _embedding_lock:
+            if _embedding_model is None:
+                try:
+                    from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+                    _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+                except Exception:
+                    _embedding_model = None  # graceful degradation
+    return _embedding_model
 
 
 class AcquireAgent(BaseAgent):
@@ -53,11 +87,12 @@ class AcquireAgent(BaseAgent):
 
     Evidence selection pipeline:
       1. LLM builds a PubMed Boolean search query (acquire_agent.txt).
-      2. PubMed API returns up to 20 candidates (HSSS filter applied first).
-      3. Keyword-based study type inference runs on all candidates.
-      4. LLM performs Listwise ranking: given the full candidate list, it
-         selects and ranks the Top-K most relevant articles in one pass.
-      5. Rank-normalised relevance scores are assigned (rank 1 → 1.0).
+      2. PubMed API returns up to 20 candidates (filter chosen by route_type).
+      3. PMC full-text is fetched in parallel for open-access articles.
+      4. BM25 + Embedding RAG extracts key sentences from full-text articles.
+      5. Keyword-based study type inference runs on all candidates.
+      6. LLM performs Listwise ranking → Top-K selection.
+      7. Full-text articles are promoted to the front of the ranked list.
     """
 
     def __init__(self, llm, tools: List[Any] = None):
@@ -104,10 +139,95 @@ class AcquireAgent(BaseAgent):
         """
         return True
 
-    def _apply_search_filter(self, query: str, question_type: str = "Therapy") -> str:
-        """Wrap query with an appropriate filter based on question type."""
-        search_filter = _FILTER_BY_QUESTION_TYPE.get(question_type, _HSSS_FILTER)
+    def _apply_search_filter(self, query: str, question_type: str = "Therapy", route_type: str = "") -> str:
+        """Wrap query with an appropriate filter based on route_type (preferred) or question_type."""
+        if route_type and route_type in _FILTER_BY_ROUTE_TYPE:
+            search_filter = _FILTER_BY_ROUTE_TYPE[route_type]
+        else:
+            search_filter = _FILTER_BY_QUESTION_TYPE.get(question_type, _HSSS_FILTER)
         return f"({query}) AND {search_filter}"
+
+    def _fetch_full_texts(self, candidates: List[Evidence]) -> None:
+        """Fetch PMC full text for open-access articles in parallel (in-place).
+
+        Only articles with a pmcid are attempted.  Results are written directly
+        to evidence.full_text and evidence.has_full_text.
+        """
+        pmc_candidates = [e for e in candidates if e.pmcid]
+        if not pmc_candidates:
+            return
+
+        def _fetch_one(ev: Evidence) -> None:
+            try:
+                text = fetch_pmc_full_text(ev.pmid)
+                if text:
+                    ev.full_text = text
+                    ev.has_full_text = True
+            except Exception:
+                pass  # non-fatal — abstract-only fallback is fine
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(_fetch_one, pmc_candidates))
+
+        n_fetched = sum(1 for e in pmc_candidates if e.has_full_text)
+        print(f"[DEBUG] PMC full-text fetched: {n_fetched}/{len(pmc_candidates)}")
+
+    def _rag_extract(
+        self, evidence: Evidence, query_terms: List[str]
+    ) -> Tuple[str, float]:
+        """Extract key sentences from full text using BM25 → Embedding rerank.
+
+        Pipeline:
+          1. Split full_text into sentences.
+          2. BM25 retrieves top-8 candidate sentences.
+          3. Embedding model reranks to top-3 by cosine similarity to query.
+
+        Returns (key_sentences_str, relevance_boost) where relevance_boost is
+        the mean cosine similarity of the top-3 sentences (0.0 if unavailable).
+        Falls back to abstract if full_text is absent.
+        """
+        text = evidence.full_text or evidence.abstract or ""
+        if not text:
+            return "", 0.0
+
+        # Split into sentences (simple heuristic — good enough for abstracts/paragraphs)
+        import re
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) > 20]
+        if not sentences:
+            return text[:500], 0.0
+
+        query_str = " ".join(query_terms)
+
+        # BM25 retrieval
+        try:
+            from rank_bm25 import BM25Okapi
+            tokenised = [s.lower().split() for s in sentences]
+            bm25 = BM25Okapi(tokenised)
+            scores = bm25.get_scores(query_str.lower().split())
+            top8_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:8]
+            top8 = [sentences[i] for i in top8_idx]
+        except Exception:
+            top8 = sentences[:8]
+
+        # Embedding rerank to top-3
+        model = _get_embedding_model()
+        if model is not None and len(top8) > 1:
+            try:
+                import numpy as np
+                query_emb = model.encode([query_str], normalize_embeddings=True)[0]
+                sent_embs = model.encode(top8, normalize_embeddings=True)
+                sims = sent_embs @ query_emb
+                top3_idx = sorted(range(len(sims)), key=lambda i: sims[i], reverse=True)[:3]
+                top3 = [top8[i] for i in top3_idx]
+                boost = float(np.mean([sims[i] for i in top3_idx]))
+            except Exception:
+                top3 = top8[:3]
+                boost = 0.0
+        else:
+            top3 = top8[:3]
+            boost = 0.0
+
+        return " … ".join(top3), boost
 
     def _infer_study_type(self, evidence: Evidence) -> str:
         """Infer study type from title and abstract using keyword rules."""
@@ -215,10 +335,33 @@ class AcquireAgent(BaseAgent):
         return result
 
     def execute(self, state: WorkflowState) -> Dict[str, Any]:
-        """Execute Acquire agent: build query → search PubMed → listwise rank."""
+        """Execute Acquire agent: build query → search → full-text → RAG → listwise rank."""
+        # Prefer EBMQuery (new routing); fall back to legacy PICOQuery
+        ebm_query: Optional[EBMQuery] = state.get("ebm_query")
         pico = state.get("pico_query")
-        if not pico:
-            raise ValueError("No PICO query found in state")
+
+        if ebm_query is None and pico is None:
+            raise ValueError("No EBMQuery or PICOQuery found in state")
+
+        # Derive a unified pico_dict for the ranking prompt (always needed)
+        if ebm_query is not None:
+            pico_dict = {
+                "patient": ebm_query.patient,
+                "intervention": ebm_query.primary_focus,
+                "comparison": ebm_query.comparator or "",
+                "outcome": ebm_query.outcome,
+            }
+            query_keywords = ebm_query.keywords
+            route_type = ebm_query.query_type  # e.g. "pico", "pird", "peo", "prognosis"
+        else:
+            pico_dict = {
+                "patient": pico.patient,
+                "intervention": pico.intervention,
+                "comparison": pico.comparison,
+                "outcome": pico.outcome,
+            }
+            query_keywords = pico.keywords
+            route_type = state.get("route_type") or ""
 
         backtrack_context = ""
         if state.get("backtrack_reason"):
@@ -229,11 +372,11 @@ class AcquireAgent(BaseAgent):
 
         # Step 1: LLM builds Boolean search query
         prompt = self.prompt_template.format(
-            patient=pico.patient,
-            intervention=pico.intervention,
-            comparison=pico.comparison,
-            outcome=pico.outcome,
-            keywords=", ".join(pico.keywords),
+            patient=pico_dict["patient"],
+            intervention=pico_dict["intervention"],
+            comparison=pico_dict["comparison"],
+            outcome=pico_dict["outcome"],
+            keywords=", ".join(query_keywords),
             backtrack_context=backtrack_context,
         )
         t0 = time.time()
@@ -257,9 +400,12 @@ class AcquireAgent(BaseAgent):
                 print(f"[DEBUG] Local DB returned {len(raw_results)} articles")
                 print(f"[TIMING] Local DB search: {time.time()-t0:.1f}s")
             else:
-                filtered_query = self._apply_search_filter(base_query, question_type)
+                filtered_query = self._apply_search_filter(
+                    base_query, question_type=question_type, route_type=route_type
+                )
                 print(
-                    f"[DEBUG] question_type={question_type}, filtered query: {filtered_query}"
+                    f"[DEBUG] route_type={route_type}, question_type={question_type}, "
+                    f"filtered query: {filtered_query}"
                 )
                 raw_results = search_pubmed(query=filtered_query, max_results=20)
                 print(f"[DEBUG] PubMed (filtered) returned {len(raw_results)} articles")
@@ -282,40 +428,54 @@ class AcquireAgent(BaseAgent):
                 "error": str(e),
             }
 
-        # Step 3: Infer study type for all candidates (used as hint in ranking prompt)
+        # Step 3: Fetch PMC full texts in parallel for open-access articles
+        t0 = time.time()
+        self._fetch_full_texts(raw_results)
+        print(f"[TIMING] PMC full-text fetch: {time.time()-t0:.1f}s")
+
+        # Step 4: RAG extract key sentences for full-text articles
+        rag_query_terms = query_keywords or base_query.split()[:10]
+        for ev in raw_results:
+            if ev.has_full_text and ev.full_text:
+                key_sents, boost = self._rag_extract(ev, rag_query_terms)
+                ev.key_sentences = key_sents
+                # Slightly boost relevance score for full-text articles (applied after ranking)
+                ev._rag_boost = boost  # type: ignore[attr-defined]
+
+        # Step 5: Infer study type for all candidates (used as hint in ranking prompt)
         for evidence in raw_results:
             evidence.study_type = self._infer_study_type(evidence)
 
         print(f"[DEBUG] Study types inferred for {len(raw_results)} candidates")
 
-        # Step 4: LLM Listwise ranking → Top-K selection
-        pico_dict = {
-            "patient": pico.patient,
-            "intervention": pico.intervention,
-            "comparison": pico.comparison,
-            "outcome": pico.outcome,
-        }
-
+        # Step 6: LLM Listwise ranking → Top-K selection
         t0 = time.time()
         selected = self._listwise_rank(raw_results, pico_dict, top_k=_TOP_K)
         print(f"[TIMING] Listwise ranking LLM: {time.time()-t0:.1f}s")
 
-        for i, e in enumerate(selected):
+        # Step 7: Promote full-text articles to the front (stable sort)
+        full_text_first = sorted(selected, key=lambda e: 0 if e.has_full_text else 1)
+
+        for i, e in enumerate(full_text_first):
+            ft_flag = "[FT]" if e.has_full_text else ""
             print(
-                f"[DEBUG] Rank {i + 1}: score={e.relevance_score:.3f}, "
+                f"[DEBUG] Rank {i + 1}{ft_flag}: score={e.relevance_score:.3f}, "
                 f"type={e.study_type}, title={e.title[:80]}..."
             )
-        print(f"[DEBUG] Listwise selected {len(selected)}/{len(raw_results)} articles")
+        print(
+            f"[DEBUG] Listwise selected {len(full_text_first)}/{len(raw_results)} articles "
+            f"({sum(1 for e in full_text_first if e.has_full_text)} with full text)"
+        )
 
         study_type_distribution: Dict[str, int] = {}
-        for e in selected:
+        for e in full_text_first:
             t = e.study_type or "Unknown"
             study_type_distribution[t] = study_type_distribution.get(t, 0) + 1
 
         return {
-            "evidence_list": selected,
+            "evidence_list": full_text_first,
             "search_query": search_query_used,
             "total_results": len(raw_results),
-            "selected_count": len(selected),
+            "selected_count": len(full_text_first),
             "study_type_distribution": study_type_distribution,
         }

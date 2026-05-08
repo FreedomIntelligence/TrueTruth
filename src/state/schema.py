@@ -15,6 +15,20 @@ class PICOQuery:
 
 
 @dataclass
+class EBMQuery:
+    """Structured clinical question supporting multiple EBM query frameworks"""
+
+    query_type: str  # "pico" | "pird" | "peo" | "prognosis" | "diagnostic_reasoning"
+    patient: str
+    primary_focus: str  # intervention / index_test / exposure / prognostic_factor
+    outcome: str
+    keywords: List[str]
+    comparator: Optional[str] = None  # comparison / reference_standard (PICO/PIRD)
+    reference_standard: Optional[str] = None  # gold standard for diagnostic questions
+    time_horizon: Optional[str] = None  # relevant for prognosis questions
+
+
+@dataclass
 class Evidence:
     """Single piece of evidence"""
 
@@ -29,6 +43,7 @@ class Evidence:
     pmcid: Optional[str] = None  # PMC article ID (local DB only)
     full_text: Optional[str] = None  # Full text (local DB only, not passed to prompts)
     key_sentences: Optional[str] = None  # Extracted span(s) relevant to query keywords
+    has_full_text: bool = False  # True when full_text field is populated
 
 
 @dataclass
@@ -163,3 +178,10 @@ class WorkflowState(TypedDict):
     remaining_budget: int
     soft_gate_signals: List[str]
     question_type: Optional[str]
+    route_type: Optional[str]  # "direct_answer" | "full_pipeline" | "sub_questions"
+    route_confidence: Optional[float]  # 0.0-1.0 confidence in routing decision
+    direct_answer_output: Optional[Dict[str, Any]]  # populated when route_type == "direct_answer"
+    ebm_query: Optional[EBMQuery]  # structured query replacing/extending pico_query
+    sub_pico_queries: Optional[List[EBMQuery]]  # decomposed sub-questions
+    sub_question_index: Optional[int]  # current sub-question being processed (0-based)
+    sub_question_total: Optional[int]  # total number of sub-questions

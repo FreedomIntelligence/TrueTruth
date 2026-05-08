@@ -126,6 +126,85 @@ class PubMedClient:
         response.raise_for_status()
         return response.json()
 
+    def fetch_pmc_ids(self, pmids: List[str]) -> dict:
+        """Convert PubMed IDs to PMC IDs via elink.
+
+        Returns a dict mapping pmid -> "PMC<id>" for articles that have a PMC
+        record.  PMIDs with no PMC entry are omitted.  Failures return {}.
+        """
+        if not pmids:
+            return {}
+
+        import xml.etree.ElementTree as ET
+
+        url = f"{self.base_url}/elink.fcgi"
+        params = {
+            "dbfrom": "pubmed",
+            "db": "pmc",
+            "id": ",".join(pmids),
+            "retmode": "xml",
+            "email": self.email,
+        }
+        try:
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            root = ET.fromstring(response.content)
+        except Exception:
+            return {}
+
+        pmid_to_pmcid: dict = {}
+        for link_set in root.findall(".//LinkSet"):
+            pmid_elem = link_set.find(".//IdList/Id")
+            if pmid_elem is None:
+                continue
+            pmid = pmid_elem.text
+            for link_set_db in link_set.findall(".//LinkSetDb"):
+                if link_set_db.findtext("DbTo", "") != "pmc":
+                    continue
+                pmc_id_elem = link_set_db.find(".//Link/Id")
+                if pmc_id_elem is not None:
+                    pmid_to_pmcid[pmid] = f"PMC{pmc_id_elem.text}"
+                    break  # take the first PMC link only
+        return pmid_to_pmcid
+
+    def fetch_pmc_full_text(self, pmcid: str) -> Optional[str]:
+        """Fetch full article text from PubMed Central.
+
+        Args:
+            pmcid: PMC ID string, e.g. "PMC1234567" or bare "1234567".
+
+        Returns:
+            Extracted plain-text body joined by double newlines, or None if
+            the article is not available in PMC open-access XML.
+        """
+        import xml.etree.ElementTree as ET
+
+        # efetch wants the numeric ID only — strip any "PMC" prefix
+        numeric_id = pmcid.lstrip("PMCpmc")
+
+        url = f"{self.base_url}/efetch.fcgi"
+        params = {
+            "db": "pmc",
+            "id": numeric_id,
+            "retmode": "xml",
+            "email": self.email,
+        }
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            root = ET.fromstring(response.content)
+        except Exception:
+            return None
+
+        # PMC XML: <body> → <sec> → <p>; collect all <p> text nodes
+        paragraphs: List[str] = []
+        for elem in root.iter("p"):
+            text = "".join(elem.itertext()).strip()
+            if text:
+                paragraphs.append(text)
+
+        return "\n\n".join(paragraphs) if paragraphs else None
+
 
 def search_pubmed(
     query: str, max_results: int = 5, email: str = None
@@ -150,12 +229,14 @@ def search_pubmed(
     if not pmids:
         return []
 
-    # Fetch summaries and abstracts in parallel — both only need the PMIDs list
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    # Fetch summaries, abstracts, and PMC ID mapping in parallel
+    with ThreadPoolExecutor(max_workers=3) as executor:
         fut_summaries = executor.submit(client.fetch_summaries, pmids)
         fut_abstracts = executor.submit(client.fetch_abstracts, pmids)
+        fut_pmc_ids = executor.submit(client.fetch_pmc_ids, pmids)
         summaries = fut_summaries.result()
         abstracts = fut_abstracts.result()
+        pmc_ids = fut_pmc_ids.result()  # {pmid: "PMC<id>"} for open-access articles
 
     evidence_list = []
 
@@ -169,6 +250,7 @@ def search_pubmed(
             pub_date = article.get("epubdate", "")
 
         abstract = abstracts.get(pmid, "")
+        pmcid = pmc_ids.get(pmid)  # None if not in PMC open-access
 
         evidence = Evidence(
             title=article.get("title", "No title"),
@@ -179,8 +261,24 @@ def search_pubmed(
             study_type=None,
             publication_date=pub_date,
             grade_level=None,
+            pmcid=pmcid,
+            has_full_text=pmcid is not None,
         )
         evidence_list.append(evidence)
 
     _save_cache(key, evidence_list)
     return evidence_list
+
+
+def fetch_pmc_full_text(pmid: str, email: str = None) -> Optional[str]:
+    """Convenience wrapper: fetch PMC full text for a single PubMed article.
+
+    Looks up the PMC ID for *pmid* first, then fetches the full article body.
+    Returns None if the article has no PMC open-access record or on any error.
+    """
+    client = PubMedClient(email=email)
+    pmc_ids = client.fetch_pmc_ids([pmid])
+    pmcid = pmc_ids.get(pmid)
+    if not pmcid:
+        return None
+    return client.fetch_pmc_full_text(pmcid)

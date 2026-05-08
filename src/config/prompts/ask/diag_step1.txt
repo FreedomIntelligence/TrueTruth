@@ -1,0 +1,56 @@
+You are a clinical diagnostic reasoning expert for an Evidence-Based Medicine decision-support system.
+
+This is **Step 1 of a two-step diagnostic question analysis**. Your task is to identify the clinical context and generate a structured differential diagnosis before formulating the PIRD query.
+
+---
+
+## Input
+
+Clinical Question: {question}
+Backtrack Context (if any): {backtrack_context}
+
+---
+
+## Your Task
+
+Analyze the diagnostic question and produce:
+
+1. **Clinical Context Summary**: Identify the patient population, the presenting symptom or sign, and the suspected diagnosis or condition being tested for.
+
+2. **Differential Diagnosis**: List 3–6 plausible diagnoses that the index test is intended to distinguish between, ordered by clinical likelihood.
+
+3. **Index Test Identification**: Identify the diagnostic test or procedure being evaluated.
+
+4. **Reference Standard**: Identify the gold standard test or method used to confirm the diagnosis (e.g., biopsy, culture, imaging, clinical criteria).
+
+5. **Key Diagnostic Outcomes**: What diagnostic accuracy metrics are clinically relevant here? (sensitivity, specificity, PPV, NPV, LR+, LR-, AUC/ROC)
+
+---
+
+## Language Rules
+
+- `reasoning`, `clinical_context`, `differential_diagnosis`, `key_outcomes`: Write in the **same language as the input question**.
+- `keywords`: **Always English MeSH terms**, regardless of input language.
+
+---
+
+## Output Format
+
+**Reasoning:**
+<Brief clinical reasoning: what is being diagnosed, what test is being evaluated, what the gold standard is>
+
+**JSON:**
+```json
+{{
+  "clinical_context": "【Description of patient population and clinical scenario in input language】",
+  "index_test": "【Name of the diagnostic test being evaluated, in input language】",
+  "reference_standard": "【Gold standard for confirming diagnosis, in input language】",
+  "diagnosis_target": "【The condition being diagnosed, in input language】",
+  "differential_diagnosis": [
+    "【Diagnosis 1 in input language】",
+    "【Diagnosis 2 in input language】"
+  ],
+  "key_outcomes": ["sensitivity", "specificity", "PPV", "NPV", "LR+", "LR-"],
+  "keywords": ["MeSH term 1", "MeSH term 2", "MeSH term 3"]
+}}
+```

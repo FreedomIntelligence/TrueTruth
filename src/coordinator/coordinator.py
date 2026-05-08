@@ -54,6 +54,14 @@ class Coordinator:
             remaining_budget=20,
             soft_gate_signals=[],
             question_type=None,
+            # Routing fields (populated by AskAgent)
+            route_type=None,
+            route_confidence=None,
+            direct_answer_output=None,
+            ebm_query=None,
+            sub_pico_queries=None,
+            sub_question_index=None,
+            sub_question_total=None,
         )
 
     def execute_agent(self, agent_name: str, state: WorkflowState) -> WorkflowState:
@@ -202,6 +210,15 @@ class Coordinator:
 
             # Execute current agent (includes Judge timing inside execute_agent)
             state = self.execute_agent(current_step, state)
+
+            # ── Direct-answer early exit ────────────────────────────────────────
+            # If the Ask agent decided the question can be answered directly from
+            # established knowledge, skip the full pipeline and return immediately.
+            if current_step == "Ask" and state.get("route_type") == "direct_answer":
+                print("[ROUTE] direct_answer — skipping full pipeline.")
+                state["should_terminate"] = True
+                state["current_step"] = None
+                break
 
             # Check hard gates first
             gate_trigger = check_hard_gates(state)

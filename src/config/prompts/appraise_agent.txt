@@ -30,6 +30,13 @@
 - `GUIDELINE`：临床实践指南（初始等级：Moderate，基于其引用的基础证据质量）
 - `EXPERT_OPINION`：专家意见、述评、共识声明（无原始数据或系统检索）（初始等级：Very Low）
 
+**included_study_type**（仅适用于 SYSTEMATIC_REVIEW / META_ANALYSIS / NMA）
+- `RCT`：该SR/MA主要纳入随机对照试验
+- `OBSERVATIONAL`：该SR/MA主要纳入观察性研究（队列、病例对照等）
+- `MIXED`：该SR/MA同时纳入RCT和观察性研究
+- `UNKNOWN`：无法从摘要判断纳入研究类型
+- `NA`：非SR/MA/NMA研究，不适用
+
 ### 二、降级因素（每项独立判断，基于摘要可推断的信息）
 
 **risk_of_bias（偏倚风险）**
@@ -59,6 +66,8 @@
 
 ### 三、升级因素（仅适用于 COHORT / CASE_CONTROL 研究）
 
+> **注意：** 若 risk_of_bias = SERIOUS 或 VERY_SERIOUS，升级因素**不生效**（upgrade_blocked_by_bias = true）。
+
 **large_effect（效应量大）**
 - `YES`：相对风险 > 2 或 < 0.5，且一致 → **+1级**
 - `NO`：效应量普通
@@ -68,6 +77,15 @@
 - `YES`：存在明确的剂量-反应梯度 → **+1级**
 - `NO`：无剂量-反应关系
 - `NA`：不适用
+
+**confounding_bias_mitigates（混杂偏倚减弱效应）**
+- `YES`：存在未控制的混杂因素，但其方向会使真实效应被低估，即真实效应可能更强 → **+1级**
+- `NO`：混杂因素不支持升级
+- `NA`：不适用（RCT、SR/MA 或无相关混杂信息）
+
+**upgrade_blocked_by_bias**（布尔值）：
+- `true`：risk_of_bias = SERIOUS 或 VERY_SERIOUS，所有升级因素被阻断，不生效
+- `false`：偏倚风险不严重，升级因素可正常生效
 
 ---
 
@@ -112,6 +130,7 @@
     {{
       "evidence_id": 1,
       "study_type": "RCT | SYSTEMATIC_REVIEW | META_ANALYSIS | NMA | COHORT | CASE_CONTROL | CROSS_SECTIONAL | NARRATIVE_REVIEW | CASE_REPORT | GUIDELINE | EXPERT_OPINION",
+      "included_study_type": "RCT | OBSERVATIONAL | MIXED | UNKNOWN | NA",
       "risk_of_bias": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
       "inconsistency": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS | NA",
       "indirectness": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
@@ -119,6 +138,8 @@
       "publication_bias": "SUSPECTED | UNDETECTED",
       "large_effect": "YES | NO | NA",
       "dose_response": "YES | NO | NA",
+      "confounding_bias_mitigates": "YES | NO | NA",
+      "upgrade_blocked_by_bias": true,
       "rationale": "一句话说明主要的降级或升级理由"
     }}
   ],

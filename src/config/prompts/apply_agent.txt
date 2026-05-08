@@ -8,10 +8,18 @@ For **Strong**, **Weak**, and **Conditional** recommendations: your recommendati
 **Input Data:**
 Original Question: {question}
 
+Structured Query: {query_description}
+
+Route Type: {route_type}
+
 Evidence Summary:
 {evidence_summary}
 
 Overall Appraisal: {appraisal_summary}
+
+Key Downgrade Factors: {key_downgrade_factors}
+
+Has Serious Inconsistency Across Studies: {has_serious_inconsistency}
 
 **Previous Attempt Feedback (if any):**
 {backtrack_context}

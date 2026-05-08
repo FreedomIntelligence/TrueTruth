@@ -12,17 +12,31 @@ from src.state.schema import WorkflowState, AppraisalResults
 # Initial GRADE points by study type (4=High, 3=Moderate, 2=Low, 1=Very Low)
 _INITIAL_POINTS: Dict[str, int] = {
     "RCT": 4,
-    "SYSTEMATIC_REVIEW": 4,  # Starts High (synthesizes RCTs or best available evidence)
-    "META_ANALYSIS": 4,  # Starts High
-    "NMA": 4,  # Network meta-analysis: starts High
+    "SYSTEMATIC_REVIEW": 4,  # Dynamic: overridden by _SR_INITIAL_POINTS when included_study_type is known
+    "META_ANALYSIS": 4,
+    "NMA": 4,
     "COHORT": 2,
     "CASE_CONTROL": 2,
     "CROSS_SECTIONAL": 2,  # Observational: starts Low
-    "NARRATIVE_REVIEW": 1,  # Expert synthesis without systematic search: Very Low
+    "NARRATIVE_REVIEW": 1,
     "CASE_REPORT": 1,
-    "GUIDELINE": 3,  # Typically based on SR: starts Moderate
-    "EXPERT_OPINION": 1,  # No systematic search: Very Low
+    "GUIDELINE": 3,
+    "EXPERT_OPINION": 1,
 }
+
+# For SR/MA/NMA: initial points depend on the type of included studies
+_SR_INITIAL_POINTS: Dict[str, int] = {
+    "RCT": 4,
+    "OBSERVATIONAL": 2,
+    "MIXED": 3,
+    "UNKNOWN": 3,
+}
+
+# Study types that are SRs/MAs (use _SR_INITIAL_POINTS when included_study_type is set)
+_SR_TYPES = {"SYSTEMATIC_REVIEW", "META_ANALYSIS", "NMA"}
+
+# Only these observational study types are eligible for upgrade factors
+_UPGRADE_STUDY_TYPES = {"COHORT", "CASE_CONTROL"}
 
 # Mapping from GRADE codes to human-readable study type labels
 # (used to sync evidence.study_type with Appraise classification)
@@ -70,29 +84,46 @@ def _compute_grade(appraisal: Dict) -> str:
     Deterministically compute GRADE level from LLM classification labels.
 
     Rules:
-      - Start from initial points based on study_type
-      - Deduct for each downgrade factor (risk_of_bias, inconsistency,
-        indirectness, imprecision, publication_bias)
-      - Add for upgrade factors (large_effect, dose_response)
-        only when study_type is observational (COHORT / CASE_CONTROL)
-      - Clamp result to [1, 4] and map to label
+      1. Initial points:
+         - SR/MA/NMA: use _SR_INITIAL_POINTS keyed by included_study_type
+           (RCT→4, OBSERVATIONAL→2, MIXED→3, UNKNOWN→3); fall back to 4.
+         - All other types: use _INITIAL_POINTS.
+      2. Downgrade for each factor (risk_of_bias, inconsistency, indirectness,
+         imprecision) and for suspected publication_bias.
+      3. Upgrade (large_effect, dose_response) only when:
+         - study_type is in _UPGRADE_STUDY_TYPES (COHORT or CASE_CONTROL), AND
+         - risk_of_bias is NOT_SERIOUS (serious bias blocks upgrades).
+         Upgraded points are capped at min(points, 3) — observational evidence
+         cannot reach High (4) through upgrades alone.
+      4. Clamp to [1, 4] and map to label.
     """
     study_type = appraisal.get("study_type", "CASE_REPORT")
-    points = _INITIAL_POINTS.get(study_type, 1)
 
-    # Downgrade factors
+    # Step 1: initial points
+    if study_type in _SR_TYPES:
+        included = appraisal.get("included_study_type", "UNKNOWN")
+        points = _SR_INITIAL_POINTS.get(included, _SR_INITIAL_POINTS["UNKNOWN"])
+    else:
+        points = _INITIAL_POINTS.get(study_type, 1)
+
+    # Step 2: downgrade factors
     for factor in ("risk_of_bias", "inconsistency", "indirectness", "imprecision"):
         points -= _DOWNGRADE_PENALTY.get(appraisal.get(factor, "NOT_SERIOUS"), 0)
 
     if appraisal.get("publication_bias") == "SUSPECTED":
         points -= 1
 
-    # Upgrade factors (observational studies only)
-    if study_type in ("COHORT", "CASE_CONTROL", "CROSS_SECTIONAL"):
+    # Step 3: upgrade factors — only for COHORT/CASE_CONTROL with no serious bias
+    if (
+        study_type in _UPGRADE_STUDY_TYPES
+        and appraisal.get("risk_of_bias", "NOT_SERIOUS") == "NOT_SERIOUS"
+    ):
         if appraisal.get("large_effect") == "YES":
             points += 1
         if appraisal.get("dose_response") == "YES":
             points += 1
+        # Observational evidence cannot reach High (4) through upgrades alone
+        points = min(points, 3)
 
     points = max(1, min(4, points))
     return _POINTS_TO_GRADE[points]

@@ -5,36 +5,190 @@ from dataclasses import asdict, is_dataclass
 from src.state.schema import Observe, Evaluation, WorkflowState
 from src.agents.base import robust_parse_json
 
-# Dimension weights per stage (used by Python to compute weighted overall_score)
-STAGE_WEIGHTS = {
+# Rubric weight definitions per stage.
+# Each rubric: (weight, allows_partial)
+# Gate items are checked separately in _check_gates() — not listed here.
+RUBRIC_WEIGHTS = {
     "Ask": {
-        "pico_completeness": 0.35,
-        "searchability": 0.35,
-        "clarity": 0.30,
+        "core_dimensions_present":      (3, True),   # Critical
+        "secondary_dimensions_present": (2, True),   # Major
+        "statement_unambiguous":        (1, True),   # Minor
     },
     "Acquire": {
-        "evidence_potency": 0.40,
-        "evidence_hierarchy": 0.30,
-        "pico_relevance": 0.30,
+        "keywords_cover_pico_dimensions": (3, True),
+        "primary_focus_match":            (3, True),
+        "outcome_match":                  (3, True),
+        "keywords_have_synonyms":         (2, True),
+        "keywords_count_sufficient":      (2, True),
+        "study_design_matches_route":     (2, True),
+        "population_match":               (2, True),
+        "top_selection_appropriate":      (1, True),
+        "selection_count_appropriate":    (1, True),
+        "key_sentences_present":          (1, True),
     },
     "Appraise": {
-        "grade_reasonableness": 0.40,
-        "conflict_identification": 0.30,
-        "numerical_confidence": 0.30,
+        "downgrade_factors_appropriate":  (3, True),
+        "included_study_type_correct":    (3, True),
+        "upgrade_factors_appropriate":    (2, True),
+        "upgrade_blocked_appropriate":    (2, False),  # only YES/NO/NA
+        "conflicts_identified":           (2, True),
+        "numerical_data_extracted":       (1, True),
     },
     "Apply": {
-        "evidence_alignment": 0.40,
-        "strength_appropriateness": 0.35,
-        "actionability": 0.25,
-    },
-    "Assess": {
-        "answer_completeness": 0.35,
-        "reasoning_chain": 0.35,
-        "logical_consistency": 0.30,
+        "effect_size_correctly_reported":     (3, True),
+        "strength_matches_evidence":          (3, True),
+        "population_applicability_addressed": (2, True),
+        "uncertainty_source_explained":       (2, True),
+        "citation_traceable":                 (2, True),
+        "recommendation_specific":            (1, True),
+        "patient_preference_considered":      (1, True),
     },
 }
 
+# Legacy weights kept for Assess stage (unchanged)
+_ASSESS_WEIGHTS = {
+    "answer_completeness": 0.35,
+    "reasoning_chain": 0.35,
+    "logical_consistency": 0.30,
+}
+
 PASS_THRESHOLD = 0.7
+
+
+# ---------------------------------------------------------------------------
+# Gate + Rubric helpers (shared across stages)
+# ---------------------------------------------------------------------------
+
+
+def _check_gates(stage: str, audit: Dict) -> List[str]:
+    """
+    Check gate items for a stage. Returns list of failed gate names.
+    Any gate failure means overall fail regardless of rubric scores.
+    """
+    gate_results = audit.get("gate_results", {})
+    failed: List[str] = []
+
+    if stage == "Ask":
+        if gate_results.get("intent_not_distorted") == "NO":
+            failed.append("intent_not_distorted")
+        if gate_results.get("route_correct") == "NO":
+            failed.append("route_correct")
+        if gate_results.get("nonresearch_classification_correct") == "NO":
+            failed.append("nonresearch_classification_correct")
+
+    elif stage == "Acquire":
+        if gate_results.get("search_terms_valid") == "NO":
+            failed.append("search_terms_valid")
+
+    elif stage == "Appraise":
+        if gate_results.get("study_type_correct") == "NO":
+            failed.append("study_type_correct")
+        if gate_results.get("computed_grade_reasonable") == "NO":
+            failed.append("computed_grade_reasonable")
+
+    elif stage == "Apply":
+        if gate_results.get("recommendation_grounded_in_evidence") == "NO":
+            failed.append("recommendation_grounded_in_evidence")
+        if gate_results.get("route_dimension_consistent") == "NO":
+            failed.append("route_dimension_consistent")
+        if gate_results.get("strength_not_grossly_inflated") == "NO":
+            failed.append("strength_not_grossly_inflated")
+
+    return failed
+
+
+def _score_rubrics(stage: str, audit: Dict) -> Tuple[Dict[str, Any], List[Dict], float]:
+    """
+    Score rubric items using the weighted rubric system.
+    Returns (dimension_scores, raw_issues, overall_score).
+    NA items are excluded from the denominator.
+    YES = full weight, PARTIAL = weight * 0.5, NO = 0.
+    """
+    rubric_weights = RUBRIC_WEIGHTS.get(stage, {})
+    rubric_results = audit.get("rubric_results", {})
+    issues: List[Dict] = []
+    total_score = 0.0
+    total_max = 0.0
+    dimension_scores: Dict[str, Any] = {}
+
+    for rubric_name, (weight, allows_partial) in rubric_weights.items():
+        val = rubric_results.get(rubric_name, "NA")
+        if val == "NA":
+            dimension_scores[rubric_name] = None  # excluded from denominator
+            continue
+
+        if val == "YES":
+            score = float(weight)
+        elif val == "PARTIAL" and allows_partial:
+            score = weight * 0.5
+        else:  # NO or PARTIAL on a non-partial rubric
+            score = 0.0
+
+        total_score += score
+        total_max += weight
+        dimension_scores[rubric_name] = score / weight  # normalise to 0-1 for display
+
+        if val == "NO":
+            severity = "critical" if weight == 3 else "major" if weight == 2 else "minor"
+            issues.append({
+                "severity": severity,
+                "dimension": rubric_name,
+                "description": f"{rubric_name} 未通过（NO）",
+            })
+        elif val == "PARTIAL":
+            severity = "major" if weight >= 2 else "minor"
+            issues.append({
+                "severity": severity,
+                "dimension": rubric_name,
+                "description": f"{rubric_name} 部分通过（PARTIAL）",
+            })
+
+    overall = total_score / total_max if total_max > 0 else 1.0
+    return dimension_scores, issues, overall
+
+
+def _appraise_layer1_check(output: Dict) -> Dict:
+    """
+    Layer 1 Python hardcoded validation for Appraise stage.
+    Returns dict with keys: passed (bool), failures (list[str]).
+    If passed=True, skip LLM Judge entirely.
+    Raises SystemError if grade_output_in_legal_range fails.
+    """
+    LEGAL_GRADES = {"High", "Moderate", "Low", "Very Low"}
+    LEGAL_STUDY_TYPES = {
+        "RCT", "COHORT", "CASE_CONTROL", "CASE_REPORT",
+        "SYSTEMATIC_REVIEW", "META_ANALYSIS", "NMA",
+        "GUIDELINE", "CROSS_SECTIONAL", "NARRATIVE_REVIEW", "EXPERT_OPINION",
+    }
+    failures: List[str] = []
+
+    appraisal = output.get("appraisal_results")
+    if appraisal is None:
+        failures.append("appraisal_results missing")
+        return {"passed": False, "failures": failures}
+
+    appraisal_d = asdict(appraisal) if is_dataclass(appraisal) else appraisal
+    evidence_list = appraisal_d.get("evidence", []) if isinstance(appraisal_d, dict) else []
+
+    for ev in evidence_list:
+        study_type = ev.get("study_type")
+        if not study_type or study_type not in LEGAL_STUDY_TYPES:
+            failures.append(
+                f"study_type missing or illegal: pmid={ev.get('pmid', '?')} study_type={study_type}"
+            )
+
+        rob = ev.get("risk_of_bias")
+        if rob is None:
+            failures.append(f"risk_of_bias missing: pmid={ev.get('pmid', '?')}")
+
+        grade = ev.get("grade_level")
+        if grade and grade not in LEGAL_GRADES:
+            raise SystemError(
+                f"grade_output_in_legal_range FAILED: pmid={ev.get('pmid', '?')} grade={grade}. "
+                "Illegal grade value — workflow terminated."
+            )
+
+    return {"passed": len(failures) == 0, "failures": failures}
 
 
 # ---------------------------------------------------------------------------
@@ -44,8 +198,29 @@ PASS_THRESHOLD = 0.7
 # ---------------------------------------------------------------------------
 
 
-def _score_ask(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, str]:
-    """Convert Ask audit classifications to dimension scores and issues."""
+def _score_ask(audit: Dict) -> Tuple[Dict[str, Any], List[Dict], bool, str]:
+    """Gate + Rubric scoring for Ask stage."""
+    gate_failures = _check_gates("Ask", audit)
+    if gate_failures:
+        issues = [
+            {"severity": "critical", "dimension": g, "description": f"Gate 失败: {g}"}
+            for g in gate_failures
+        ]
+        return {"core_dimensions_present": 0.0}, issues, False, f"Gate失败: {', '.join(gate_failures)}"
+
+    # direct_answer: gate passed means classification correct → terminate signal
+    gate_results = audit.get("gate_results", {})
+    if gate_results.get("nonresearch_classification_correct") == "YES":
+        return {"nonresearch": 1.0}, [], False, "direct_answer路由正确，触发terminate"
+
+    dim_scores, issues, overall = _score_rubrics("Ask", audit)
+    failures = audit.get("failures", [])
+    hint = "; ".join(failures) if failures else f"综合评分: {overall:.2f}"
+    return dim_scores, issues, False, hint
+
+
+def _score_ask_legacy(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, str]:
+    """Legacy Ask scoring — kept for backward compat with old prompt format."""
     issues: List[Dict] = []
 
     # --- Safety circuit breaker ---
