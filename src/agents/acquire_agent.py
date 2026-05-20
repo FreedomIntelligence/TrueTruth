@@ -58,7 +58,7 @@ _FILTER_BY_ROUTE_TYPE = {
 }
 
 # Number of top-K articles to select via listwise ranking.
-_TOP_K = 10
+_TOP_K = 5
 
 # ---------------------------------------------------------------------------
 # Lazy-loaded sentence-transformer for RAG reranking
@@ -75,7 +75,14 @@ def _get_embedding_model():
             if _embedding_model is None:
                 try:
                     from sentence_transformers import SentenceTransformer  # noqa: PLC0415
-                    _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+                    try:
+                        # Use cached model without network check (avoids HuggingFace timeouts)
+                        _embedding_model = SentenceTransformer(
+                            "all-MiniLM-L6-v2", local_files_only=True
+                        )
+                    except Exception:
+                        # Model not cached yet — download it once
+                        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
                 except Exception:
                     _embedding_model = None  # graceful degradation
     return _embedding_model
@@ -95,10 +102,12 @@ class AcquireAgent(BaseAgent):
       7. Full-text articles are promoted to the front of the ranked list.
     """
 
-    def __init__(self, llm, tools: List[Any] = None):
+    def __init__(self, llm, ranking_llm=None, tools: List[Any] = None):
         super().__init__(llm=llm, tools=tools or [], agent_type="Acquire")
         self.prompt_template = self._load_prompt("acquire_agent.txt")
         self.ranking_prompt_template = self._load_prompt("acquire_ranking.txt")
+        # Listwise ranking is a classification/sorting task — fast model is sufficient.
+        self.ranking_llm = ranking_llm or llm
 
     def _load_prompt(self, filename: str) -> str:
         prompt_path = Path(__file__).parent.parent / "config" / "prompts" / filename
@@ -132,12 +141,9 @@ class AcquireAgent(BaseAgent):
         return content.strip()
 
     def _use_local_db(self, question_type: str = "Therapy") -> bool:
-        """Return True to route retrieval through the local obstetrics evidence DB.
-
-        Demo phase: always True.  Later this can be switched per question_type
-        or via an environment variable / config flag.
-        """
-        return True
+        """Return True to route retrieval through the local obstetrics evidence DB."""
+        import os
+        return os.getenv("USE_LOCAL_DB", "false").lower() == "true"
 
     def _apply_search_filter(self, query: str, question_type: str = "Therapy", route_type: str = "") -> str:
         """Wrap query with an appropriate filter based on route_type (preferred) or question_type."""
@@ -230,7 +236,29 @@ class AcquireAgent(BaseAgent):
         return " … ".join(top3), boost
 
     def _infer_study_type(self, evidence: Evidence) -> str:
-        """Infer study type from title and abstract using keyword rules."""
+        """Infer study type from PubMed publication types (primary) then title/abstract keywords (fallback)."""
+        # --- Primary: PubMed pubtype metadata (authoritative, index-assigned) ---
+        pub_types = getattr(evidence, "pub_types", None) or []
+        pt_lower = {pt.lower() for pt in pub_types}
+        if "meta-analysis" in pt_lower:
+            return "Systematic Review"
+        if "systematic review" in pt_lower:
+            return "Systematic Review"
+        if "randomized controlled trial" in pt_lower or "controlled clinical trial" in pt_lower:
+            return "RCT"
+        if "clinical trial" in pt_lower:
+            return "RCT"
+        if "observational study" in pt_lower or "cohort study" in pt_lower:
+            return "Cohort Study"
+        if "case-control study" in pt_lower or "case control study" in pt_lower:
+            return "Case-Control Study"
+        if "case reports" in pt_lower:
+            return "Case Report"
+        if "review" in pt_lower:
+            # "Review" pubtype without "Systematic Review" → narrative review
+            return "Narrative Review"
+
+        # --- Fallback: keyword scan of title + abstract ---
         text = f"{evidence.title} {evidence.abstract or ''}".lower()
         if "systematic review" in text or "meta-analysis" in text:
             return "Systematic Review"
@@ -239,7 +267,6 @@ class AcquireAgent(BaseAgent):
             or "randomised controlled trial" in text
             or "randomized clinical trial" in text
             or "randomised clinical trial" in text
-            or "rct" in text
             or " randomized " in text
             or " randomised " in text
         ):
@@ -298,7 +325,7 @@ class AcquireAgent(BaseAgent):
             candidates=candidate_text,
         )
 
-        response = self.llm.invoke(prompt)
+        response = self.ranking_llm.invoke(prompt)
         print(
             f"[DEBUG] Listwise ranking response (first 300 chars): {response.content[:300]}"
         )
@@ -352,7 +379,7 @@ class AcquireAgent(BaseAgent):
                 "outcome": ebm_query.outcome,
             }
             query_keywords = ebm_query.keywords
-            route_type = ebm_query.query_type  # e.g. "pico", "pird", "peo", "prognosis"
+            route_type = f"ebm_{ebm_query.query_type}"  # e.g. "ebm_pico", "ebm_pird"
         else:
             pico_dict = {
                 "patient": pico.patient,
@@ -379,6 +406,11 @@ class AcquireAgent(BaseAgent):
             keywords=", ".join(query_keywords),
             backtrack_context=backtrack_context,
         )
+        # Split into system + user messages so the static prefix (role, worked
+        # example, instructions) gets prefix-cached by the gateway. See
+        # base.split_prompt_for_caching.
+        from src.agents.base import split_prompt_for_caching
+        prompt = split_prompt_for_caching(prompt)
         t0 = time.time()
         response = self.llm.invoke(prompt)
         print(f"[TIMING] Acquire query LLM: {time.time()-t0:.1f}s")

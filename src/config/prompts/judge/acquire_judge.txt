@@ -41,7 +41,13 @@ Acquire Agent 输出（已排序的证据列表）：{stage_output}
 - PARTIAL：同类方法但有差异（不同剂量/版本），相关性高
 - NO：完全不同的测试/干预/暴露
 
-## R3. outcome_match【Critical，权重3】
+## R2b. p_match【Critical，权重3】
+基于证据列表中人群匹配度最好的那篇证据判断：研究人群是否与查询 Patient 匹配？
+- YES：精准匹配（相同年龄段、相同疾病状态）
+- PARTIAL：有轻微差异，结论可审慎外推
+- NO：严重不匹配（成人证据用于儿科；完全不同疾病）
+
+## R3. o_match【Critical，权重3】
 基于证据列表中结局匹配度最好的那篇证据判断：证据是否报告了临床关心的结局指标？
 - YES：报告了直接结局指标
 - PARTIAL：报告了代理指标或部分相关结局
@@ -66,9 +72,13 @@ Acquire Agent 输出（已排序的证据列表）：{stage_output}
 - ebm_pird：第一优先级=SR/Meta分析(基于诊断准确性研究)，第二=诊断准确性研究(横断面)，第三=回顾性诊断研究，排除=机制综述/治疗类RCT
 - ebm_peo：第一优先级=SR/Meta分析(基于观察性研究)，第二=前瞻性队列，第三=病例对照，排除=RCT/机制综述
 - ebm_prognosis：第一优先级=SR/Meta分析(基于队列研究)，第二=前瞻性队列，第三=回顾性队列，排除=机制综述/病例报告
+
+**重要原则：PARTIAL 反映该临床领域文献结构限制，不代表检索失败，不需要重新检索。**
+如果该领域本身缺乏第一优先级文献（如罕见病、新兴干预、特定诊断测试），有次优先级文献已是合理结果。
+
 - YES：有第一优先级文献
-- PARTIAL：有次优先级文献但无第一优先级，或混入少量不匹配设计
-- NO：大量纳入与 route_type 不匹配的研究设计
+- PARTIAL：有次优先级文献但无第一优先级（**此为该领域文献限制，非检索错误**）；或混入少量不匹配设计但主体匹配
+- NO：大量纳入与 route_type 完全不匹配的研究设计（如 PIRD 问题全部是治疗 RCT，无任何诊断准确性研究）
 
 ## R7. population_match【Major，权重2】
 基于证据列表中人群匹配度最好的那篇证据判断：研究人群是否与查询 Patient 匹配？
@@ -94,6 +104,13 @@ Top 文章的 key_sentences 字段是否有实质内容？
 - PARTIAL：部分文章 key_sentences 为空（摘要极短导致 chunk 失败）
 - NO：所有文章 key_sentences 均为空，RAG 流程可能失败
 
+## 5. 全文与 RAG 质量审计（full_text_audit）
+
+**full_text_coverage**：Top 文章（排名前3）中，has_full_text=True 的比例是否合理？
+- `GOOD`：≥2/3 篇有全文
+- `PARTIAL`：1/3 篇有全文，或全文获取部分失败
+- `NONE`：Top 3 篇均无全文
+
 # Output Format
 仅输出以下 JSON，不要包含任何其他文本：
 
@@ -105,13 +122,18 @@ Top 文章的 key_sentences 字段是否有实质内容？
   "rubric_results": {{
     "keywords_cover_pico_dimensions": "YES | PARTIAL | NO",
     "primary_focus_match": "YES | PARTIAL | NO",
-    "outcome_match": "YES | PARTIAL | NO",
+    "p_match": "YES | PARTIAL | NO",
+    "o_match": "YES | PARTIAL | NO",
     "keywords_have_synonyms": "YES | PARTIAL | NO",
     "keywords_count_sufficient": "YES | PARTIAL | NO",
     "study_design_matches_route": "YES | PARTIAL | NO",
     "population_match": "YES | PARTIAL | NO",
     "top_selection_appropriate": "YES | PARTIAL | NO",
     "selection_count_appropriate": "YES | PARTIAL | NO",
+    "key_sentences_present": "YES | PARTIAL | NO"
+  }},
+  "full_text_audit": {{
+    "full_text_coverage": "GOOD | PARTIAL | NONE",
     "key_sentences_present": "YES | PARTIAL | NO"
   }},
   "search_exhausted": false,

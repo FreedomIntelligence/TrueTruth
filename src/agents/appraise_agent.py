@@ -122,6 +122,8 @@ def _compute_grade(appraisal: Dict) -> str:
             points += 1
         if appraisal.get("dose_response") == "YES":
             points += 1
+        if appraisal.get("confounding_bias_mitigates") == "YES":
+            points += 1
         # Observational evidence cannot reach High (4) through upgrades alone
         points = min(points, 3)
 
@@ -165,22 +167,30 @@ class AppraiseAgent(BaseAgent):
         return robust_parse_json(content)
 
     def _format_evidence_list(self, evidence_list) -> str:
-        """Format evidence list for the prompt, including abstract preview."""
+        """Format evidence list for the prompt, including full abstract and pub_types."""
         parts = []
         for i, e in enumerate(evidence_list):
-            abstract_preview = (getattr(e, "abstract", "") or "")[:200]
+            abstract = (getattr(e, "abstract", "") or "")
             study_type_hint = getattr(e, "study_type", "") or ""
             hint_str = (
                 f"\nSource DB study_type hint: {study_type_hint}"
                 if study_type_hint
                 else ""
             )
+            # pub_types from PubMed metadata is authoritative for study design.
+            # Pass it explicitly so the Agent uses it instead of guessing from text.
+            pub_types = getattr(e, "pub_types", None) or []
+            pub_types_str = (
+                f"\nPubMed pub_types (authoritative): {', '.join(pub_types)}"
+                if pub_types
+                else ""
+            )
             parts.append(
                 f"Evidence {i + 1}:\n"
                 f"Title: {e.title}\n"
                 f"Source: {e.source}\n"
-                f"PMID: {e.pmid}{hint_str}\n"
-                f"Abstract (preview): {abstract_preview}"
+                f"PMID: {e.pmid}{hint_str}{pub_types_str}\n"
+                f"Abstract: {abstract}"
             )
         return "\n\n".join(parts)
 
@@ -253,7 +263,16 @@ class AppraiseAgent(BaseAgent):
         """Execute Appraise agent to classify GRADE factors and compute final grades."""
         evidence_list = state.get("evidence_list")
         if not evidence_list:
-            raise ValueError("No evidence found in state")
+            # Graceful terminate — Coordinator should have caught this, but guard here too
+            state["should_terminate"] = True
+            state["backtrack_reason"] = "Appraise: evidence_list is empty, cannot proceed."
+            return {
+                "appraisal_results": None,
+                "grade_rationales": [],
+                "numerical_confidence": 0.0,
+                "numerical_data": {"data_available": "NO", "confidence_level": "VERY_LOW", "note": "No evidence available"},
+                "bias_inconsistency": False,
+            }
 
         backtrack_context = ""
         if state.get("backtrack_reason"):
@@ -317,6 +336,7 @@ class AppraiseAgent(BaseAgent):
                     "evidence_id": i + 1,
                     "title": evidence.title,
                     "study_type": study_type,
+                    "included_study_type": appraisal.get("included_study_type", "NA"),
                     "initial_grade": initial_grade,
                     "risk_of_bias": appraisal.get("risk_of_bias", "NOT_SERIOUS"),
                     "inconsistency": appraisal.get("inconsistency", "NA"),
@@ -325,6 +345,11 @@ class AppraiseAgent(BaseAgent):
                     "publication_bias": appraisal.get("publication_bias", "UNDETECTED"),
                     "large_effect": appraisal.get("large_effect", "NA"),
                     "dose_response": appraisal.get("dose_response", "NA"),
+                    "confounding_bias_mitigates": appraisal.get("confounding_bias_mitigates", "NA"),
+                    "upgrade_blocked_by_bias": (
+                        study_type in _UPGRADE_STUDY_TYPES
+                        and appraisal.get("risk_of_bias") in ("SERIOUS", "VERY_SERIOUS")
+                    ),
                     "computed_grade": computed_grade,
                     "rationale": appraisal.get("rationale", ""),
                 }

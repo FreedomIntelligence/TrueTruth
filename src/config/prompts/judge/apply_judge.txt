@@ -39,11 +39,21 @@ Apply 的维度一致性检查是否使用了与 route_type 匹配的框架？
 
 ## R2. strength_matches_evidence【Critical，权重3】
 推荐强度是否与证据等级严格匹配？
+
+**判断依据**：以 Apply Agent 输出中的 `evidence_quality` 字段为准（该字段反映 Apply 实际采纳证据的质量，已排除人群不匹配或结局不相关的证据）。不要用 Appraise 阶段的全量 GRADE 分布覆盖此判断——Apply 可能合理地排除了部分证据。
+
 注意：inconsistency=SERIOUS 时 Moderate→Weak 的降强推荐属正确行为，不应标注为不匹配。
-EBM原则：Strong需要High/Moderate直接证据；Weak适用于Low质量或结果不一致；Conditional适用于仅有间接证据；Consensus-based适用于仅有专家共识/指南。
-- YES：推荐强度与证据等级严格匹配（含上述特殊情况）
+
+EBM原则（基于 evidence_quality）：
+- evidence_quality=High/Moderate + 结果一致 → Strong 合理
+- evidence_quality=Low 或结果不一致 → Weak 合理
+- evidence_quality=Very Low + 结果一致 → Weak 合理（有明确 caveats）
+- 仅间接证据 → Conditional 合理
+- 仅专家共识/指南 → Consensus-based 合理
+
+- YES：推荐强度与 `evidence_quality` 严格匹配（含上述特殊情况）
 - PARTIAL：有轻微偏差（如 Moderate 证据给 Strong，但结果高度一致且无 inconsistency 问题），临床上可接受
-- NO：推荐强度与证据等级明显不符（不触发 gate 的中等程度不匹配）
+- NO：推荐强度与 `evidence_quality` 明显不符（不触发 gate 的中等程度不匹配）
 
 ## R3. population_applicability_addressed【Major，权重2】
 是否明确说明了证据人群与当前患者的匹配程度，包括可外推性或外推限制？
@@ -80,6 +90,9 @@ EBM原则：Strong需要High/Moderate直接证据；Weak适用于Low质量或结
 
 ```json
 {{
+  "route_audit": {{
+    "route_dimension_consistent": "YES | PARTIAL | NO | NA"
+  }},
   "gate_results": {{
     "recommendation_grounded_in_evidence": "YES | NO",
     "route_dimension_consistent": "YES | NO",
@@ -98,3 +111,4 @@ EBM原则：Strong需要High/Moderate直接证据；Weak适用于Low质量或结
   "overall_quality": "pass | fail | gate_fail"
 }}
 ```
+

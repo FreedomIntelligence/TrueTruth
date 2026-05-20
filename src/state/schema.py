@@ -44,6 +44,7 @@ class Evidence:
     full_text: Optional[str] = None  # Full text (local DB only, not passed to prompts)
     key_sentences: Optional[str] = None  # Extracted span(s) relevant to query keywords
     has_full_text: bool = False  # True when full_text field is populated
+    pub_types: Optional[List[str]] = None  # PubMed publication types (e.g. ["Randomized Controlled Trial"])
 
 
 @dataclass

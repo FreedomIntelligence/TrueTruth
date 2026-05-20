@@ -17,7 +17,8 @@ RUBRIC_WEIGHTS = {
     "Acquire": {
         "keywords_cover_pico_dimensions": (3, True),
         "primary_focus_match":            (3, True),
-        "outcome_match":                  (3, True),
+        "p_match":                        (3, True),
+        "o_match":                        (3, True),
         "keywords_have_synonyms":         (2, True),
         "keywords_count_sufficient":      (2, True),
         "study_design_matches_route":     (2, True),
@@ -198,6 +199,36 @@ def _appraise_layer1_check(output: Dict) -> Dict:
 # ---------------------------------------------------------------------------
 
 
+def _precheck_ask(pico_dict: dict) -> dict:
+    """Pre-check Ask output for basic keyword quality before LLM judge call."""
+    import re
+    chinese = re.compile(r'[一-鿿]')
+    keywords = pico_dict.get("keywords", [])
+    keywords_english = not any(chinese.search(kw) for kw in keywords)
+    has_synonyms = len(set(keywords)) >= 2
+    keyword_count_ok = len(keywords) > 1
+    return {
+        "keywords_english_medical": "YES" if keywords_english else "NO",
+        "has_synonyms_or_mesh":     "YES" if has_synonyms else "NO",
+        "keyword_count_ok":         keyword_count_ok,
+    }
+
+
+def _derive_routing_decision(audit: dict, pass_threshold: bool,
+                              retry_count: int, max_retry: int = 2) -> str:
+    """Derive routing decision from Ask judge audit without LLM output."""
+    gate_results = audit.get("gate_results", {})
+    intent_ok = gate_results.get("intent_not_distorted") != "NO"
+    route_ok = gate_results.get("route_correct") != "NO"
+    if not intent_ok:
+        return "retry_structure" if retry_count < max_retry else "fallback"
+    if not route_ok:
+        return "retry_route" if retry_count < max_retry else "fallback"
+    if pass_threshold:
+        return "proceed"
+    return "retry_structure" if retry_count < max_retry else "fallback"
+
+
 def _score_ask(audit: Dict) -> Tuple[Dict[str, Any], List[Dict], bool, str]:
     """Gate + Rubric scoring for Ask stage."""
     gate_failures = _check_gates("Ask", audit)
@@ -349,504 +380,146 @@ def _score_ask_legacy(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, 
 
 
 def _score_acquire(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, str]:
-    """Convert Acquire audit classifications to dimension scores and issues."""
+    """Convert Acquire audit classifications to dimension scores and issues.
+
+    Reads the Gate+Rubrics format produced by acquire_judge.txt:
+      gate_results.search_terms_valid
+      rubric_results.{keywords_cover_pico_dimensions, primary_focus_match, ...}
+      overall_quality: pass | fail | gate_fail
+      failures: [...]
+    """
     issues: List[Dict] = []
-    search_audit = audit.get("search_audit", {})
-    evidence_audit = audit.get("evidence_audit", {})
+    gate_results = audit.get("gate_results", {})
     search_exhausted = bool(audit.get("search_exhausted", False))
 
-    # --- Invalid search terms: circuit breaker ---
-    if search_audit.get("search_terms_valid") == "NO":
-        issues.append(
-            {
-                "severity": "critical",
-                "dimension": "evidence_potency",
-                "description": (
-                    "检索词构建有误，检索方向完全错误。"
-                    "请根据PICO重新设计检索策略，使用正确的英文医学术语（MeSH词）。"
-                ),
-            }
-        )
-        return (
-            {"evidence_potency": 0.0, "evidence_hierarchy": 0.0, "pico_relevance": 0.0},
-            issues,
-            False,
-            "检索词严重错误，无法获取有效证据。",
-        )
+    # Gate: invalid search terms
+    if gate_results.get("search_terms_valid") == "NO":
+        issues.append({
+            "severity": "critical",
+            "dimension": "search_terms_valid",
+            "description": "检索词构建有误，检索方向完全错误。请根据PICO重新设计检索策略。",
+        })
+        return {"overall": 0.0}, issues, False, "检索词严重错误，无法获取有效证据。"
 
-    # --- Evidence hierarchy ---
-    type_scores = {
-        "SR_META": 1.0,
-        "RCT": 0.80,
-        "COHORT": 0.55,
-        "CASE_CONTROL": 0.35,
-        "CASE_REPORT": 0.15,
-        "NONE": 0.0,
-    }
-    best_type = evidence_audit.get("best_study_type", "NONE")
-    evidence_hierarchy = type_scores.get(best_type, 0.0)
+    # Rubric scoring via shared helper
+    dim_scores, rubric_issues, overall_score = _score_rubrics("Acquire", audit)
+    issues.extend(rubric_issues)
 
-    # --- Evidence potency = hierarchy × ability to answer PICO ---
-    answers_map = {"YES": 1.0, "PARTIAL": 0.6, "NO": 0.2}
-    answers_val = evidence_audit.get("best_evidence_answers_pico", "NO")
-    evidence_potency = evidence_hierarchy * answers_map.get(answers_val, 0.2)
-
-    # --- PICO relevance = average of P / I / O match ---
-    pico_match_map = {"YES": 1.0, "PARTIAL": 0.5, "NO": 0.0}
-    p_score = pico_match_map.get(evidence_audit.get("pico_p_match", "NO"), 0.0)
-    i_score = pico_match_map.get(evidence_audit.get("pico_i_match", "NO"), 0.0)
-    o_score = pico_match_map.get(evidence_audit.get("pico_o_match", "NO"), 0.0)
-    pico_relevance = (p_score + i_score + o_score) / 3
-
-    # --- Issue generation ---
-    if best_type == "NONE" and not search_exhausted:
-        # Reaching here means search_terms_valid=YES (circuit breaker already returned for NO).
-        # NONE results with valid terms = API/network error or genuinely empty literature.
-        # Use "major" (not "critical") and advise retrying with same terms.
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "evidence_potency",
-                "description": (
-                    "检索返回零结果，但检索词已确认有效（可能是API网络错误或临时故障）。"
-                    "请保持原检索词直接重试，不要改变搜索策略。"
-                ),
-            }
-        )
-    elif best_type == "CASE_REPORT":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "evidence_hierarchy",
-                "description": (
-                    f"找到的最高质量证据仅为病例报告（{best_type}）。"
-                    "建议尝试更宽泛或不同的检索词以寻找更高层级的证据（RCT或SR）。"
-                ),
-            }
-        )
-
-    if answers_val == "NO" and not search_exhausted:
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "evidence_potency",
-                "description": (
-                    "现有最佳证据无法直接回答PICO临床问题，"
-                    "请调整检索策略以找到更直接相关的证据。"
-                ),
-            }
-        )
-
-    pico_match_labels = {
-        "pico_p_match": "Patient人群",
-        "pico_i_match": "Intervention干预",
-        "pico_o_match": "Outcome结局",
-    }
-    for key, label in pico_match_labels.items():
-        val = evidence_audit.get(key, "YES")
-        if val == "NO":
-            issues.append(
-                {
-                    "severity": "major",
-                    "dimension": "pico_relevance",
-                    "description": (
-                        f"证据与PICO的 {label} 严重不匹配，"
-                        "请调整检索词以找到更匹配的证据。"
-                    ),
-                }
-            )
-        elif val == "PARTIAL":
-            issues.append(
-                {
-                    "severity": "minor",
-                    "dimension": "pico_relevance",
-                    "description": (
-                        f"证据与PICO的 {label} 存在间接性，"
-                        "请在后续评价阶段注意外推限制。"
-                    ),
-                }
-            )
-
-    # --- Listwise selection quality ---
-    # Mapped onto existing dimensions: selection order → evidence_potency adjustment;
-    # selection count → evidence_hierarchy adjustment.
-    listwise_audit = audit.get("listwise_audit", {})
-    top_sel_val = listwise_audit.get("top_selection_appropriate", "YES")
-    count_val = listwise_audit.get("selection_count_appropriate", "YES")
-
-    listwise_map = {"YES": 0.0, "PARTIAL": -0.05, "NO": -0.15}
-    evidence_potency = max(0.0, evidence_potency + listwise_map.get(top_sel_val, 0.0))
-    evidence_hierarchy = max(0.0, evidence_hierarchy + listwise_map.get(count_val, 0.0))
-
-    if top_sel_val == "NO":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "evidence_potency",
-                "description": (
-                    "Listwise排序结果不合理：排名靠前的文献并非最优证据，"
-                    "或纳入了明显不相关的文献。请重新审视选择策略。"
-                ),
-            }
-        )
-    elif top_sel_val == "PARTIAL":
-        issues.append(
-            {
+    # Translate failures[] from LLM into additional context
+    for failure_msg in audit.get("failures", []):
+        if failure_msg and not any(failure_msg in i.get("description", "") for i in issues):
+            issues.append({
                 "severity": "minor",
-                "dimension": "evidence_potency",
-                "description": "Listwise排名顺序有轻微偏差，个别文献的排名位置有待优化。",
-            }
-        )
+                "dimension": "acquire_detail",
+                "description": failure_msg,
+            })
 
-    if count_val == "NO":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "evidence_hierarchy",
-                "description": (
-                    "选择数量明显不合理（有效候选很多却仅选极少篇，或质量差仍凑满10篇），"
-                    "请重新调整Listwise筛选标准。"
-                ),
-            }
-        )
-
-    dimension_scores = {
-        "evidence_potency": evidence_potency,
-        "evidence_hierarchy": evidence_hierarchy,
-        "pico_relevance": pico_relevance,
-    }
-    return dimension_scores, issues, search_exhausted, audit.get("reasoning", "")
+    return dim_scores, issues, search_exhausted, audit.get("reasoning", "")
 
 
 def _score_appraise(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, str]:
-    """
-    Convert Appraise audit classifications to dimension scores and issues.
+    """Convert Appraise audit classifications to dimension scores and issues.
 
-    The judge now evaluates the Appraise Agent's structured output which
-    contains explicit GRADE factor classifications (study_type, risk_of_bias,
-    etc.) and Python-computed grades.  The audit fields reflect this:
-      - grade_audit.study_type_correct: was study type identified correctly?
-      - grade_audit.downgrade_factors_appropriate: were factor labels reasonable?
-      - grade_audit.computed_grade_reasonable: does the final grade make sense?
+    Reads gate_results/rubric_results from appraise_judge.txt output.
+    Gates: study_type_correct, computed_grade_reasonable
+    Rubrics: downgrade_factors_appropriate, included_study_type_correct,
+             upgrade_factors_appropriate, upgrade_blocked_appropriate,
+             conflicts_identified, numerical_data_extracted
     """
     issues: List[Dict] = []
-    grade_audit = audit.get("grade_audit", {})
-    conflict_audit = audit.get("conflict_audit", {})
-    data_audit = audit.get("data_audit", {})
+    gate_results = audit.get("gate_results", {})
+    search_exhausted = bool(audit.get("search_exhausted", False))
 
-    # --- grade_reasonableness ---
-    # 30% study_type correctness + 30% downgrade factor quality + 40% computed grade
-    type_map = {"YES": 1.0, "PARTIAL": 0.70, "NO": 0.0}
-    factor_map = {"YES": 1.0, "PARTIAL": 0.60, "NO": 0.15}
-    grade_map = {"YES": 1.0, "PARTIAL": 0.65, "NO": 0.10}
+    # G1 → G2 dependency: if study_type is wrong, G2 is automatically UNCERTAIN
+    # (wrong study_type already captured by G1; don't double-penalise with G2)
+    g1 = gate_results.get("study_type_correct", "YES")
+    g2 = gate_results.get("computed_grade_reasonable", "YES")
+    if g1 == "NO":
+        g2 = "UNCERTAIN"
 
-    type_val = grade_audit.get("study_type_correct", "YES")
-    factor_val = grade_audit.get("downgrade_factors_appropriate", "YES")
-    grade_val = grade_audit.get("computed_grade_reasonable", "YES")
+    if g2 == "NO":
+        # Hard gate: calculation is clearly wrong
+        issues.append({
+            "severity": "critical",
+            "dimension": "computed_grade_reasonable",
+            "description": "Gate 失败: computed_grade_reasonable — GRADE等级计算明显不合理",
+        })
+        return {"overall": 0.0}, issues, False, "Gate失败: computed_grade_reasonable"
 
-    grade_reasonableness = (
-        0.30 * type_map.get(type_val, 1.0)
-        + 0.30 * factor_map.get(factor_val, 1.0)
-        + 0.40 * grade_map.get(grade_val, 1.0)
-    )
+    if g2 == "UNCERTAIN":
+        # Soft warning: study design ambiguous, can't verify — demote to MAJOR
+        issues.append({
+            "severity": "major",
+            "dimension": "computed_grade_reasonable",
+            "description": "computed_grade_reasonable 无法确认（研究设计有歧义或摘要信息不足）",
+        })
 
-    if type_val == "NO":
-        issues.append(
-            {
-                "severity": "critical",
-                "dimension": "grade_reasonableness",
-                "description": (
-                    "研究类型（study_type）分类存在明显错误，导致GRADE初始等级错误。"
-                    "请重新识别每篇研究的设计类型：RCT / COHORT / CASE_CONTROL / CASE_REPORT。"
-                ),
-            }
-        )
-    elif type_val == "PARTIAL":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "grade_reasonableness",
-                "description": "部分研究的类型识别有误，请复查并修正错误的study_type标签。",
-            }
-        )
+    # Rubric scoring
+    dim_scores, rubric_issues, overall_score = _score_rubrics("Appraise", audit)
+    issues.extend(rubric_issues)
 
-    if factor_val == "NO":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "grade_reasonableness",
-                "description": (
-                    "GRADE降级因素评估存在明显错误（如将未盲法RCT标记为NOT_SERIOUS偏倚风险）。"
-                    "请重新评估各降级因素（risk_of_bias、inconsistency、indirectness、imprecision）。"
-                ),
-            }
-        )
-    elif factor_val == "PARTIAL":
-        issues.append(
-            {
+    # study_type_correct as a major issue (not gate-level)
+    if gate_results.get("study_type_correct") == "NO":
+        issues.append({
+            "severity": "major",
+            "dimension": "study_type_correct",
+            "description": "存在研究类型识别错误，请检查 study_type 标注",
+        })
+
+    for failure_msg in audit.get("failures", []):
+        if failure_msg and not any(failure_msg in i.get("description", "") for i in issues):
+            issues.append({
                 "severity": "minor",
-                "dimension": "grade_reasonableness",
-                "description": "个别降级因素的严重程度评估过于宽松或严苛，请复查相关分类依据。",
-            }
-        )
+                "dimension": "appraise_detail",
+                "description": failure_msg,
+            })
 
-    if grade_val == "NO":
-        issues.append(
-            {
-                "severity": "critical",
-                "dimension": "grade_reasonableness",
-                "description": (
-                    "系统计算出的最终GRADE等级（computed_grade）明显不合理，"
-                    "根本原因通常是study_type或降级因素分类错误。请修正上游分类标签。"
-                ),
-            }
-        )
-    elif grade_val == "PARTIAL":
-        issues.append(
-            {
-                "severity": "minor",
-                "dimension": "grade_reasonableness",
-                "description": "个别研究的计算等级与预期有轻微偏差，可接受但建议核查分类标签。",
-            }
-        )
-
-    # --- conflict_identification ---
-    conflicts_exist = conflict_audit.get("conflicts_exist", "NO")
-    conflicts_id_val = conflict_audit.get("conflicts_identified", "NA")
-
-    if conflicts_exist == "NO":
-        conflict_identification = 1.0  # Correctly assessed no conflict
-    else:
-        conflict_id_map = {"YES": 1.0, "PARTIAL": 0.5, "NO": 0.0, "NA": 1.0}
-        conflict_identification = conflict_id_map.get(conflicts_id_val, 0.0)
-        if conflicts_id_val == "NO":
-            issues.append(
-                {
-                    "severity": "major",
-                    "dimension": "conflict_identification",
-                    "description": (
-                        "证据间存在实质性冲突但未被识别，"
-                        "请重新比较各研究的结论方向并分析冲突原因。"
-                    ),
-                }
-            )
-        elif conflicts_id_val == "PARTIAL":
-            issues.append(
-                {
-                    "severity": "minor",
-                    "dimension": "conflict_identification",
-                    "description": "证据冲突识别不完整，conflict_description需补充遗漏的冲突说明。",
-                }
-            )
-
-    # --- numerical_confidence ---
-    # data_score: did the agent correctly assess what data is available?
-    data_map = {"YES": 1.0, "PARTIAL": 0.65, "NO": 0.1, "NA": 0.85}
-    data_val = data_audit.get("numerical_data_extracted", "PARTIAL")
-    data_score = data_map.get(data_val, 0.65)
-
-    # confidence_accuracy: was the confidence_level label itself appropriate?
-    # HIGH = accurate label (no over/under-confidence), VERY_LOW = serious mismatch
-    confidence_accuracy_map = {
-        "HIGH": 1.0,
-        "MODERATE": 0.75,
-        "LOW": 0.35,
-        "VERY_LOW": 0.10,
-    }
-    conf_acc_val = data_audit.get("confidence_level_appropriate", "MODERATE")
-    confidence_accuracy = confidence_accuracy_map.get(conf_acc_val, 0.75)
-
-    numerical_confidence = 0.5 * data_score + 0.5 * confidence_accuracy
-
-    if data_val == "NO":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "numerical_confidence",
-                "description": (
-                    "摘要中存在数值数据但未被提取或评估，"
-                    "请补充提取关键数值指标（效应量、置信区间、P值等）。"
-                ),
-            }
-        )
-    if conf_acc_val == "LOW":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "numerical_confidence",
-                "description": (
-                    "置信度标签评估过高（实际数值不可靠），"
-                    "请下调confidence_level并在推荐中标注数值的不确定性。"
-                ),
-            }
-        )
-    elif conf_acc_val == "VERY_LOW":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "numerical_confidence",
-                "description": (
-                    "置信度标签与实际数据质量严重不符，"
-                    "请重新评估数值可靠性，必要时请求人工审核。"
-                ),
-            }
-        )
-
-    dimension_scores = {
-        "grade_reasonableness": grade_reasonableness,
-        "conflict_identification": conflict_identification,
-        "numerical_confidence": numerical_confidence,
-    }
-    return dimension_scores, issues, False, audit.get("reasoning", "")
+    return dim_scores, issues, search_exhausted, audit.get("reasoning", "")
 
 
 def _score_apply(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, str]:
-    """Convert Apply audit classifications to dimension scores and issues."""
+    """Convert Apply audit classifications to dimension scores and issues.
+
+    Reads gate_results/rubric_results from apply_judge.txt output.
+    Gates: recommendation_grounded_in_evidence, route_dimension_consistent,
+           strength_not_grossly_inflated
+    Rubrics: effect_size_correctly_reported, strength_matches_evidence,
+             population_applicability_addressed, uncertainty_source_explained,
+             citation_traceable, recommendation_specific, patient_preference_considered
+    """
     issues: List[Dict] = []
-    grounding_audit = audit.get("grounding_audit", {})
-    strength_audit = audit.get("strength_audit", {})
-    actionability_audit = audit.get("actionability_audit", {})
+    gate_results = audit.get("gate_results", {})
+    search_exhausted = bool(audit.get("search_exhausted", False))
 
-    # --- evidence_alignment ---
-    grounding_map = {"YES": 1.0, "PARTIAL": 0.55, "NO": 0.1}
-    rec_based_val = grounding_audit.get("recommendation_based_on_evidence", "YES")
-    uses_external_val = grounding_audit.get("uses_external_knowledge", "NO")
+    # Gates
+    gate_failures = []
+    for gate_key in ("recommendation_grounded_in_evidence", "route_dimension_consistent",
+                     "strength_not_grossly_inflated"):
+        if gate_results.get(gate_key) == "NO":
+            gate_failures.append(gate_key)
 
-    base_alignment = grounding_map.get(rec_based_val, 1.0)
-    external_penalty = 0.25 if uses_external_val == "YES" else 0.0
-    evidence_alignment = max(0.0, base_alignment - external_penalty)
-
-    if rec_based_val == "NO":
-        issues.append(
-            {
+    if gate_failures:
+        for g in gate_failures:
+            issues.append({
                 "severity": "critical",
-                "dimension": "evidence_alignment",
-                "description": (
-                    "推荐与提供的证据无关或方向相反，"
-                    "请严格基于本次检索的证据重新生成推荐，不得引入外部知识。"
-                ),
-            }
-        )
-    elif rec_based_val == "PARTIAL":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "evidence_alignment",
-                "description": (
-                    "推荐部分超出证据范围，请移除未有本次检索证据支持的推断内容。"
-                ),
-            }
-        )
-    if uses_external_val == "YES":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "evidence_alignment",
-                "description": (
-                    "检测到使用了外部知识（如'通常认为'、'临床经验'）替代证据，"
-                    "请仅基于本次提供的证据列表生成推荐。"
-                ),
-            }
-        )
+                "dimension": g,
+                "description": f"Gate 失败: {g}",
+            })
+        return {"overall": 0.0}, issues, False, f"Gate失败: {', '.join(gate_failures)}"
 
-    # --- strength_appropriateness ---
-    insuf_val = strength_audit.get("insufficient_evidence_appropriate", "NA")
-    if insuf_val == "YES":
-        strength_appropriateness = 1.0
-    elif insuf_val == "NO":
-        strength_appropriateness = 0.15
-        issues.append(
-            {
-                "severity": "critical",
-                "dimension": "strength_appropriateness",
-                "description": (
-                    "证据充足但错误输出了'证据不足'声明，"
-                    "请根据现有证据质量给出对应强度的推荐。"
-                ),
-            }
-        )
-    else:  # NA — a normal recommendation was produced
-        strength_map = {"YES": 1.0, "MINOR_MISMATCH": 0.65, "MAJOR_MISMATCH": 0.15}
-        strength_val = strength_audit.get("strength_matches_evidence_quality", "YES")
-        strength_appropriateness = strength_map.get(strength_val, 1.0)
-        if strength_val == "MAJOR_MISMATCH":
-            issues.append(
-                {
-                    "severity": "critical",
-                    "dimension": "strength_appropriateness",
-                    "description": (
-                        "推荐强度与证据质量严重不符（如Very Low证据给出Strong推荐），"
-                        "请依据GRADE原则重新确定推荐强度：Very Low→Weak或证据不足；"
-                        "Low→Weak；Moderate→Conditional/Moderate；High→Strong。"
-                    ),
-                }
-            )
-        elif strength_val == "MINOR_MISMATCH":
-            issues.append(
-                {
-                    "severity": "major",
-                    "dimension": "strength_appropriateness",
-                    "description": (
-                        "推荐强度与证据质量存在轻微不符，"
-                        "请检查证据质量等级与推荐强度是否严格匹配。"
-                    ),
-                }
-            )
+    # Rubric scoring
+    dim_scores, rubric_issues, overall_score = _score_rubrics("Apply", audit)
+    issues.extend(rubric_issues)
 
-    # --- actionability ---
-    specific_map = {"YES": 1.0, "PARTIAL": 0.6, "NO": 0.1}
-    caveats_map = {"YES": 1.0, "PARTIAL": 0.6, "NO": 0.2, "NA": 1.0}
-    specific_val = actionability_audit.get("recommendation_specific", "YES")
-    caveats_val = actionability_audit.get("caveats_documented", "NA")
-    actionability = 0.6 * specific_map.get(specific_val, 1.0) + 0.4 * caveats_map.get(
-        caveats_val, 1.0
-    )
-
-    if specific_val == "NO":
-        issues.append(
-            {
-                "severity": "major",
-                "dimension": "actionability",
-                "description": (
-                    "推荐过于模糊，临床医生无法据此执行，"
-                    "请提供更具体的推荐内容（如适应症、用药剂量、疗程等关键参数）。"
-                ),
-            }
-        )
-    elif specific_val == "PARTIAL":
-        issues.append(
-            {
+    for failure_msg in audit.get("failures", []):
+        if failure_msg and not any(failure_msg in i.get("description", "") for i in issues):
+            issues.append({
                 "severity": "minor",
-                "dimension": "actionability",
-                "description": "推荐可以更加具体，请补充关键临床细节以提高可操作性。",
-            }
-        )
-    if caveats_val == "NO":
-        issues.append(
-            {
-                "severity": "minor",
-                "dimension": "actionability",
-                "description": (
-                    "存在重要的适用性限制或PICO不匹配未在caveats中说明，"
-                    "请补充相关注意事项。"
-                ),
-            }
-        )
-    elif caveats_val == "PARTIAL":
-        issues.append(
-            {
-                "severity": "minor",
-                "dimension": "actionability",
-                "description": "caveats中部分重要限制未说明，请补充完整。",
-            }
-        )
+                "dimension": "apply_detail",
+                "description": failure_msg,
+            })
 
-    dimension_scores = {
-        "evidence_alignment": evidence_alignment,
-        "strength_appropriateness": strength_appropriateness,
-        "actionability": actionability,
-    }
-    return dimension_scores, issues, False, audit.get("reasoning", "")
+    return dim_scores, issues, search_exhausted, audit.get("reasoning", "")
 
 
 def _score_assess(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, str]:
@@ -994,7 +667,9 @@ def _score_assess(audit: Dict) -> Tuple[Dict[str, float], List[Dict], bool, str]
         "reasoning_chain": reasoning_chain,
         "logical_consistency": logical_consistency,
     }
-    return dimension_scores, issues, False, audit.get("reasoning", "")
+    failures = audit.get("failures", [])
+    hint = "; ".join(failures) if failures else f"综合评分: {(answer_completeness + reasoning_chain + logical_consistency) / 3:.2f}"
+    return dimension_scores, issues, False, hint
 
 
 # Dispatch table: stage name -> scorer function
@@ -1057,17 +732,22 @@ class JudgeLLM:
         self, stage: str, dimension_scores: Dict[str, float]
     ) -> float:
         """Calculate weighted overall score from dimension scores."""
-        weights = STAGE_WEIGHTS.get(stage, {})
+        # direct_answer Ask path uses a single "nonresearch" dimension that isn't
+        # in RUBRIC_WEIGHTS — return it directly so it isn't dropped to 0.
+        if stage == "Ask" and "nonresearch" in dimension_scores:
+            return dimension_scores["nonresearch"]
+
+        weights = {dim: w for dim, (w, _) in RUBRIC_WEIGHTS.get(stage, {}).items()}
         if not weights:
-            return (
-                sum(dimension_scores.values()) / len(dimension_scores)
-                if dimension_scores
-                else 0.0
-            )
+            valid = [v for v in dimension_scores.values() if v is not None]
+            return sum(valid) / len(valid) if valid else 0.0
         total = 0.0
         weight_sum = 0.0
         for dim, weight in weights.items():
-            total += dimension_scores.get(dim, 0.0) * weight
+            val = dimension_scores.get(dim)
+            if val is None:
+                continue  # NA — excluded from denominator
+            total += val * weight
             weight_sum += weight
         return total / weight_sum if weight_sum > 0 else 0.0
 
@@ -1130,6 +810,14 @@ class JudgeLLM:
 
         summary = reasoning_hint if reasoning_hint else f"综合评分: {overall_score:.2f}"
 
+        # For Ask stage: derive routing decision and write to state as side effect
+        if stage == "Ask":
+            retry_count = state.get("agent_call_counts", {}).get("Ask", 1) - 1
+            routing_decision = _derive_routing_decision(audit, pass_threshold, retry_count)
+            state["_ask_routing_decision"] = routing_decision  # type: ignore[typeddict-unknown-key]
+            if routing_decision == "fallback":
+                state["route_confidence"] = 0.0  # type: ignore[typeddict-item]
+
         evaluation = Evaluation(
             overall_score=overall_score,
             dimension_scores=dimension_scores,
@@ -1149,27 +837,46 @@ class JudgeLLM:
         self, stage: str, output: Dict[str, Any], state: WorkflowState
     ) -> Dict[str, Any]:
         """Prepare context variables for judge prompt based on stage."""
-        context = {"stage_output": self._format_stage_output(output)}
+        context = {
+            "stage_output": self._format_stage_output(output),
+            "route_type": state.get("route_type") or "full_pipeline",
+        }
 
         if stage == "Ask":
             context["original_question"] = state["original_question"]
+            context["route_type"] = state.get("route_type") or "full_pipeline"
 
         elif stage == "Acquire":
+            ebm_q = state.get("ebm_query")
             pico = state.get("pico_query")
-            if pico:
-                context["pico_query"] = json.dumps(
+            if ebm_q:
+                context["ebm_query"] = json.dumps(
                     {
+                        "query_type": ebm_q.query_type,
+                        "patient": ebm_q.patient,
+                        "primary_focus": ebm_q.primary_focus,
+                        "outcome": ebm_q.outcome,
+                        "keywords": ebm_q.keywords,
+                        "comparator": ebm_q.comparator,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            elif pico:
+                context["ebm_query"] = json.dumps(
+                    {
+                        "query_type": "pico",
                         "patient": pico.patient,
-                        "intervention": pico.intervention,
-                        "comparison": pico.comparison,
+                        "primary_focus": pico.intervention,
                         "outcome": pico.outcome,
                         "keywords": pico.keywords,
+                        "comparator": pico.comparison,
                     },
                     ensure_ascii=False,
                     indent=2,
                 )
             else:
-                context["pico_query"] = "N/A"
+                context["ebm_query"] = "N/A"
 
             # Condense evidence list to avoid context overflow
             raw_output = output
@@ -1184,6 +891,10 @@ class JudgeLLM:
                         "pmid": getattr(e, "pmid", ""),
                         "study_type": getattr(e, "study_type", "Unknown"),
                         "relevance_score": getattr(e, "relevance_score", 0.0),
+                        # has_full_text and key_sentences let the Judge verify
+                        # key_sentences_present without guessing from other fields.
+                        "has_full_text": getattr(e, "has_full_text", False),
+                        "has_key_sentences": bool(getattr(e, "key_sentences", None)),
                         "abstract_preview": (getattr(e, "abstract", "") or "")[:200],
                     }
                 )
@@ -1216,6 +927,11 @@ class JudgeLLM:
                         "source": e.source,
                         "pmid": e.pmid,
                         "relevance_score": e.relevance_score,
+                        # pub_types is the authoritative study design field used by AppraiseAgent.
+                        # Including it here lets the Judge verify study_type using the same
+                        # source of truth, eliminating abstract-text vs metadata divergence.
+                        "pub_types": getattr(e, "pub_types", None) or [],
+                        "abstract": (getattr(e, "abstract", "") or "")[:300],
                     }
                     for e in evidence_list
                 ],
@@ -1225,8 +941,8 @@ class JudgeLLM:
 
             # Override stage_output: strip full abstracts from Evidence objects.
             # The Judge audits GRADE classification labels (study_type, risk_of_bias, etc.),
-            # not the raw text — abstracts are already shown via evidence_list above.
-            # Removing them cuts ~4000 redundant chars (~1000 tokens) from the Judge prompt.
+            # not the raw text — abstracts are shown via evidence_list above (truncated to 300 chars).
+            # Removing full abstracts here cuts ~4000 redundant chars (~1000 tokens) from the Judge prompt.
             appraisal = output.get("appraisal_results")
             if appraisal and is_dataclass(appraisal):
                 appraisal_d = asdict(appraisal)
@@ -1250,28 +966,38 @@ class JudgeLLM:
             )
 
         elif stage == "Apply":
+            ebm_q = state.get("ebm_query")
             pico = state.get("pico_query")
-            if pico:
-                context["pico_query"] = json.dumps(
-                    {
-                        "patient": pico.patient,
-                        "intervention": pico.intervention,
-                        "comparison": pico.comparison,
-                        "outcome": pico.outcome,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
+            if ebm_q:
+                context["query_description"] = (
+                    f"{ebm_q.query_type}: {ebm_q.patient} / {ebm_q.primary_focus} / "
+                    f"{ebm_q.comparator or 'N/A'} / {ebm_q.outcome}"
+                )
+            elif pico:
+                context["query_description"] = (
+                    f"pico: {pico.patient} / {pico.intervention} / "
+                    f"{pico.comparison} / {pico.outcome}"
                 )
             else:
-                context["pico_query"] = "N/A"
+                context["query_description"] = "N/A"
 
             appraisal = state.get("appraisal_results")
             if appraisal:
+                # Include per-evidence grade breakdown so the Judge can verify
+                # strength_matches_evidence using the same adopted-evidence view
+                # that Apply Agent used (evidence_quality field), not just the
+                # aggregate summary which hides which studies were excluded.
+                grade_rationales = state.get("grade_rationales") or []
+                grade_breakdown = [
+                    {"title": r.get("title", ""), "computed_grade": r.get("computed_grade", "")}
+                    for r in grade_rationales
+                ]
                 context["appraisal_results"] = json.dumps(
                     {
                         "evidence_count": len(appraisal.evidence),
                         "has_conflict": appraisal.has_conflict,
                         "summary": appraisal.summary,
+                        "grade_breakdown": grade_breakdown,
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -1281,14 +1007,24 @@ class JudgeLLM:
 
         elif stage == "Assess":
             context["original_question"] = state["original_question"]
+            context["route_confidence"] = state.get("route_confidence") or "N/A"
 
+            ebm_q = state.get("ebm_query")
             pico = state.get("pico_query")
-            if pico:
+            if ebm_q:
+                context["ebm_query_description"] = (
+                    f"{ebm_q.query_type}: {ebm_q.patient} / {ebm_q.primary_focus} / "
+                    f"{ebm_q.comparator or 'N/A'} / {ebm_q.outcome}"
+                )
+                context["pico_query"] = context["ebm_query_description"]
+            elif pico:
                 context["pico_query"] = (
                     f"{pico.patient} / {pico.intervention} / {pico.comparison} / {pico.outcome}"
                 )
+                context["ebm_query_description"] = context["pico_query"]
             else:
                 context["pico_query"] = "N/A"
+                context["ebm_query_description"] = "N/A"
 
             evidence_list = state.get("evidence_list", [])
             context["evidence_count"] = len(evidence_list)

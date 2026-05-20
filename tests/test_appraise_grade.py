@@ -8,7 +8,6 @@ Task 7 spec:
   COHORT+NOT_SERIOUS+all upgrades → Moderate (cap at min(points, 3))
   CROSS_SECTIONAL+all upgrades → Low (not in _UPGRADE_STUDY_TYPES)
 """
-import pytest
 from src.agents.appraise_agent import _compute_grade
 
 
@@ -90,3 +89,49 @@ def test_cross_sectional_upgrades_not_applied():
         "dose_response": "YES",          # should be ignored
     }
     assert _compute_grade(appraisal) == "Low"
+
+
+def test_cohort_confounding_bias_mitigates_upgrade():
+    """confounding_bias_mitigates=YES should trigger +1 upgrade (third upgrade factor)."""
+    appraisal = {
+        "study_type": "COHORT",
+        "risk_of_bias": "NOT_SERIOUS",
+        "inconsistency": "NOT_SERIOUS",
+        "indirectness": "NOT_SERIOUS",
+        "imprecision": "NOT_SERIOUS",
+        "publication_bias": "UNDETECTED",
+        "large_effect": "NO",
+        "dose_response": "NO",
+        "confounding_bias_mitigates": "YES",  # +1
+    }
+    assert _compute_grade(appraisal) == "Moderate"  # 2+1=3, capped at 3
+
+
+def test_sr_mixed_moderate():
+    """SR with MIXED included studies → initial points 3 → Moderate."""
+    appraisal = {
+        "study_type": "SYSTEMATIC_REVIEW",
+        "included_study_type": "MIXED",
+        "risk_of_bias": "NOT_SERIOUS",
+        "inconsistency": "NOT_SERIOUS",
+        "indirectness": "NOT_SERIOUS",
+        "imprecision": "NOT_SERIOUS",
+        "publication_bias": "UNDETECTED",
+    }
+    assert _compute_grade(appraisal) == "Moderate"
+
+
+def test_cohort_serious_bias_blocks_confounding_upgrade():
+    """SERIOUS bias blocks confounding_bias_mitigates=YES upgrade."""
+    appraisal = {
+        "study_type": "COHORT",
+        "risk_of_bias": "SERIOUS",
+        "inconsistency": "NOT_SERIOUS",
+        "indirectness": "NOT_SERIOUS",
+        "imprecision": "NOT_SERIOUS",
+        "publication_bias": "UNDETECTED",
+        "large_effect": "NO",
+        "dose_response": "NO",
+        "confounding_bias_mitigates": "YES",
+    }
+    assert _compute_grade(appraisal) == "Very Low"  # 2-1=1, upgrade blocked

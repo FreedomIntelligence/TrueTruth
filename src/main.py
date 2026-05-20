@@ -4,8 +4,25 @@ EBM 5A Clinical Decision Support System - Main Entry Point
 """
 
 import sys
+import io
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any
-from src.config.llm_config import get_llm, get_fast_llm
+
+# Force UTF-8 on Windows to avoid GBK encoding errors with Unicode characters.
+# line_buffering=True so [TIMING] / stage markers flush as they happen — without
+# this, when stdout is redirected to a file the buffer is block-sized and a
+# subprocess killed mid-run produces an empty log, making timeouts invisible.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+else:
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+from src.config.llm_config import get_llm, get_fast_llm, get_cache_stats, get_ttft_samples
 from src.agents.ask_agent import AskAgent
 from src.agents.acquire_agent import AcquireAgent
 from src.agents.appraise_agent import AppraiseAgent
@@ -16,6 +33,29 @@ from src.scheduling.scheduling_llm import SchedulingLLM
 from src.coordinator.coordinator import Coordinator
 
 
+def _warmup_llms() -> None:
+    """Fire one minimal request to each LLM purpose in parallel so HTTP
+    connections and the upstream model are pre-warmed before the pipeline's
+    first real call. Failures are swallowed — warmup must never block the run."""
+    t0 = time.time()
+    clients = [
+        ("agent", get_llm(temperature=0.0, purpose="agent")),
+        ("judge", get_fast_llm(temperature=0.0, purpose="judge")),
+        ("scheduling", get_fast_llm(temperature=0.0, purpose="scheduling")),
+    ]
+
+    def _ping(name_client):
+        name, client = name_client
+        try:
+            client.invoke("ok")
+        except Exception as exc:
+            print(f"[WARMUP] {name} failed (non-fatal): {exc}")
+
+    with ThreadPoolExecutor(max_workers=len(clients)) as pool:
+        list(pool.map(_ping, clients))
+    print(f"[TIMING] warmup: {time.time() - t0:.2f}s")
+
+
 def create_workflow() -> Coordinator:
     """
     Create and configure the workflow coordinator with all agents
@@ -23,9 +63,10 @@ def create_workflow() -> Coordinator:
     Returns:
         Configured Coordinator instance
     """
+    _warmup_llms()
+
     # Initialize LLM
-    llm = get_llm(temperature=0.0)
-    fast_llm = get_fast_llm(temperature=0.0)
+    llm = get_llm(temperature=0.0, purpose="agent")
 
     # Initialize agents
     agents = {
@@ -37,10 +78,10 @@ def create_workflow() -> Coordinator:
     }
 
     # Initialize Judge LLM (use fast model for classification tasks)
-    judge_llm = JudgeLLM(llm=fast_llm)
+    judge_llm = JudgeLLM(llm=get_fast_llm(temperature=0.0, purpose="judge"))
 
     # Initialize Scheduling LLM (use fast model for classification tasks)
-    scheduling_llm = SchedulingLLM(llm=fast_llm)
+    scheduling_llm = SchedulingLLM(llm=get_fast_llm(temperature=0.0, purpose="scheduling"))
 
     # Create coordinator
     coordinator = Coordinator(
@@ -198,8 +239,23 @@ def format_output(state: Dict[str, Any]) -> str:
 
     rec = state.get("recommendation")
     assess = state.get("assessment")
+    direct = state.get("direct_answer_output")
 
-    if rec:
+    if state.get("route_type") == "direct_answer" and direct:
+        output.append(f"A: {direct.get('answer', '[empty]')}")
+        output.append("")
+        basis = direct.get("answer_basis")
+        guideline = direct.get("guideline_source")
+        if basis:
+            output.append(f"   Answer Basis            : {basis}")
+        if guideline:
+            output.append(f"   Guideline Source        : {guideline}")
+        caveats = direct.get("caveats") or []
+        if caveats:
+            output.append("   Caveats                 :")
+            for c in caveats:
+                output.append(f"     • {c}")
+    elif rec:
         output.append(f"A: {rec.text}")
         output.append("")
         output.append(f"   Recommendation Strength : {rec.strength}")
@@ -247,6 +303,33 @@ def main():
         result = run_clinical_question(question)
         output = format_output(result)
         print(output)
+        stats = get_cache_stats()
+        # huatuogpt.cn gateway reports prefix caching by reducing prompt_tokens
+        # rather than via cached_tokens — so we surface raw totals; comparing
+        # prompt_tokens across runs of the same workflow shows the cache effect.
+        print(
+            f"[CACHE] calls={stats['calls']} "
+            f"total_prompt_tokens={stats['prompt_tokens']} "
+            f"cached_tokens(openai-style)={stats['cached_tokens']}"
+        )
+
+        # Per-purpose TTFT (time-to-first-token) summary from streamed calls.
+        ttft_data = get_ttft_samples()
+        if ttft_data:
+            print("[TTFT] per-purpose summary (ttft / total elapsed in seconds):")
+            for purpose, samples in sorted(ttft_data.items()):
+                valid_ttft = [s["ttft"] for s in samples if s["ttft"] is not None]
+                elapsed = [s["elapsed"] for s in samples]
+                if not valid_ttft:
+                    continue
+                avg_ttft = sum(valid_ttft) / len(valid_ttft)
+                med_ttft = sorted(valid_ttft)[len(valid_ttft) // 2]
+                avg_elapsed = sum(elapsed) / len(elapsed)
+                print(
+                    f"  {purpose:14s} n={len(samples):2d}  "
+                    f"ttft avg={avg_ttft:5.2f}s med={med_ttft:5.2f}s  "
+                    f"elapsed avg={avg_elapsed:5.2f}s"
+                )
     except Exception as e:
         print(f"Error: {e}")
         import traceback

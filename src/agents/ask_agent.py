@@ -1,12 +1,18 @@
 """
 AskAgent — clinical question triage and EBM query structuring.
 
-Routing flow:
-  1. Router prompt  → route_type: "direct_answer" | "full_pipeline" | "sub_questions"
+Routing flow (V2, post 2026-05-18 A/B validation):
+  1. Unified router prompt → route_type + question_type + ebm_framework
+                              + (for non-Diagnosis full_pipeline) structured query
   2a. direct_answer → DirectAnswer prompt → populate direct_answer_output, set should_terminate
-  2b. sub_questions → decompose into sub-question list, recurse on first sub-question
-  2c. full_pipeline  → framework-specific prompt (PICO / PIRD / PEO / Prognosis)
-                       Diagnosis questions run diag_step1 → diag_step2 before PIRD
+  2b. sub_questions → decompose into sub-question list, structure each via framework prompt
+  2c. full_pipeline (non-Diagnosis) → use the query already produced by unified router
+  2d. full_pipeline (Diagnosis)     → diag_step1 → ebm_pird (V1 two-step flow retained)
+
+V2 merges router + framework structuring for the non-Diagnosis path, saving one
+LLM call per Ask invocation. A/B experiment (6 cases × 3 repeats, 2026-05-18)
+showed V2 quality ≥ V1 across all cases with avg latency reduction ~50% on
+simple framework paths.
 """
 
 from __future__ import annotations
@@ -105,7 +111,7 @@ class AskAgent(BaseAgent):
         self._prompts: Dict[str, str] = {
             stem: _load_prompt(stem)
             for stem in [
-                "router",
+                "router_unified",
                 "direct_answer",
                 "diag_step1",
                 "diag_step2",
@@ -115,6 +121,10 @@ class AskAgent(BaseAgent):
                 "ebm_prognosis",
             ]
         }
+        # Cache for the unified router payload within a single execute() call,
+        # so _run_router and _handle_full_pipeline can both consume it without
+        # making a second LLM call.
+        self._last_router_payload: Optional[dict] = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -130,8 +140,10 @@ class AskAgent(BaseAgent):
         question = state["original_question"]
         backtrack_context = self._build_backtrack_context(state)
 
-        # ── Step 1: Route ──────────────────────────────────────────────
-        route_result = self._run_router(question, backtrack_context)
+        # ── Step 1: Unified router (routes + structures non-Diagnosis query) ─
+        self._last_router_payload = self._call_unified_router(question, backtrack_context)
+        route_result = self._last_router_payload
+
         route_type = route_result.get("route_type", "full_pipeline")
         if route_type not in _VALID_ROUTE_TYPES:
             logger.warning("Unknown route_type '%s', defaulting to full_pipeline", route_type)
@@ -183,12 +195,14 @@ class AskAgent(BaseAgent):
         )
 
     # ------------------------------------------------------------------
-    # Router
+    # Router (unified — replaces V1's router.txt + framework prompt pair
+    # for non-Diagnosis full_pipeline questions)
     # ------------------------------------------------------------------
 
-    def _run_router(self, question: str, backtrack_context: str) -> dict:
-        """Call the router prompt and return parsed JSON."""
-        prompt = self._prompts["router"].format(
+    def _call_unified_router(self, question: str, backtrack_context: str) -> dict:
+        """Call the unified router prompt. Returns parsed JSON with routing
+        decision and (for non-Diagnosis full_pipeline) a `query` sub-object."""
+        prompt = self._prompts["router_unified"].format(
             question=question,
             backtrack_context=backtrack_context,
         )
@@ -196,8 +210,9 @@ class AskAgent(BaseAgent):
         try:
             return robust_parse_json(response.content)
         except ValueError as exc:
-            logger.error("Router JSON parse failed: %s", exc)
-            return {"route_type": "full_pipeline", "question_type": "Therapy", "ebm_framework": "pico"}
+            logger.error("Unified router JSON parse failed: %s", exc)
+            return {"route_type": "full_pipeline", "question_type": "Therapy",
+                    "ebm_framework": "pico", "query": None}
 
     # ------------------------------------------------------------------
     # Route handlers
@@ -304,13 +319,24 @@ class AskAgent(BaseAgent):
         route_confidence: float,
         backtrack_context: str,
     ) -> Dict[str, Any]:
-        """Structure the question into an EBMQuery and return state updates."""
-        ebm = self._structure_question(
-            question=question,
-            question_type=question_type,
-            ebm_framework=ebm_framework,
-            backtrack_context=backtrack_context,
-        )
+        """Structure the question into an EBMQuery and return state updates.
+
+        For non-Diagnosis questions, the unified router already produced the
+        structured query, so no extra LLM call is needed. Diagnosis questions
+        still run diag_step1 + ebm_pird to preserve diagnostic reasoning quality.
+        """
+        cached_query = (self._last_router_payload or {}).get("query")
+        if cached_query:
+            ebm = _ebm_query_from_dict(cached_query)
+        else:
+            # Diagnosis path (or unified router missed the query — fall back to
+            # the two-step structuring flow).
+            ebm = self._structure_question(
+                question=question,
+                question_type=question_type,
+                ebm_framework=ebm_framework,
+                backtrack_context=backtrack_context,
+            )
         return {
             "route_type": "full_pipeline",
             "route_confidence": route_confidence,

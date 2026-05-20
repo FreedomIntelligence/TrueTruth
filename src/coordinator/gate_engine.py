@@ -117,47 +117,6 @@ def check_evidence_insufficiency_gate(state: WorkflowState) -> Optional[GateTrig
                 },
             )
 
-    # Scenario 2: Appraise stage found ALL evidence is Very Low quality AND no
-    # systematic reviews were found.  This is a much stricter threshold than the
-    # old 80% rule: for rare diseases the evidence base is inherently low quality,
-    # so we should still proceed to Apply/Assess and produce a recommendation
-    # (with appropriate caveats).  Only hard-fail when there is literally nothing
-    # of value AND we have tried to acquire evidence multiple times.
-    if state["current_step"] == "Appraise":
-        appraisal = state.get("appraisal_results")
-        acquire_attempts = state["agent_call_counts"].get("Acquire", 0)
-        if appraisal and appraisal.evidence and acquire_attempts >= 2:
-            grade_distribution: dict = {}
-            for e in appraisal.evidence:
-                if e.grade_level:
-                    grade_distribution[e.grade_level] = (
-                        grade_distribution.get(e.grade_level, 0) + 1
-                    )
-
-            total_evidence = sum(grade_distribution.values())
-            very_low_count = grade_distribution.get("Very Low", 0)
-            has_better_evidence = (
-                total_evidence > very_low_count
-            )  # at least one non-VL article
-
-            # Only terminate if 100% Very Low AND at least 5 articles appraised
-            # AND we have already tried Acquire twice — meaning re-searching won't help
-            if (
-                total_evidence >= 5
-                and not has_better_evidence
-                and very_low_count / total_evidence == 1.0
-            ):
-                return GateTrigger(
-                    gate_name="insufficient_evidence_quality",
-                    reason="所有证据质量均为Very Low（经多次检索后确认）",
-                    suggested_action="terminate",
-                    output_message={
-                        "status": "evidence_quality_insufficient",
-                        "message": "现有证据质量极低（Very Low），无法支持可靠的临床推荐。建议等待更高质量的研究发表。",
-                        "grade_distribution": grade_distribution,
-                    },
-                )
-
     return None
 
 

@@ -252,6 +252,19 @@ def search_pubmed(
         abstract = abstracts.get(pmid, "")
         pmcid = pmc_ids.get(pmid)  # None if not in PMC open-access
 
+        # Extract publication types from esummary pubtype list.
+        # Each entry is either a plain string or a dict with a "value" key
+        # depending on the API version — handle both forms.
+        raw_pubtypes = article.get("pubtype", [])
+        pub_types = []
+        for pt in raw_pubtypes:
+            if isinstance(pt, str):
+                pub_types.append(pt)
+            elif isinstance(pt, dict):
+                v = pt.get("value") or pt.get("name") or ""
+                if v:
+                    pub_types.append(v)
+
         evidence = Evidence(
             title=article.get("title", "No title"),
             source=article.get("source", "PubMed"),
@@ -263,6 +276,7 @@ def search_pubmed(
             grade_level=None,
             pmcid=pmcid,
             has_full_text=pmcid is not None,
+            pub_types=pub_types or None,
         )
         evidence_list.append(evidence)
 

@@ -35,10 +35,13 @@ Before formulating a recommendation, verify that the retrieved evidence is appli
 **Step 2 - Evidence Sufficiency Assessment:**
 Determine if the evidence is sufficient to make a recommendation:
 - If no relevant evidence was retrieved → output "No Recommendation"
-- If evidence quality is Very Low AND results are inconclusive/conflicting AND no indirect evidence available → output "Insufficient Evidence"
+- If evidence quality is Very Low AND results are **conflicting** (opposing directions) AND no indirect evidence available → output "Insufficient Evidence"
+- If evidence quality is Very Low AND results are **consistent** (same direction, even if imprecise) → proceed to Step 3 with "Weak" and explicit caveats about low certainty
 - If direct evidence is absent but consistent indirect evidence exists (different population, surrogate endpoint, similar intervention) → proceed to Step 3 with "Conditional"
 - If no direct or indirect study evidence, but expert consensus / clinical practice guidelines support a recommendation → proceed to Step 3 with "Consensus-based"
 - If evidence is Low quality or above AND results are consistent → proceed to Step 3
+
+> **Important**: "Insufficient Evidence" should be reserved for situations where results genuinely conflict or no relevant evidence exists at all. Do NOT output "Insufficient Evidence" simply because evidence quality is Very Low — consistent Very Low evidence still supports a Weak recommendation with caveats.
 
 **Step 3 - Recommendation Formulation (only if evidence is sufficient):**
 - Strength must strictly follow evidence quality:
@@ -49,11 +52,16 @@ Determine if the evidence is sufficient to make a recommendation:
   - Only expert consensus / guidelines, no direct study evidence → "Consensus-based" (cite the specific guideline or consensus)
 - Do NOT upgrade strength based on clinical intuition or training knowledge.
 
-**Step 4 - Address Previous Feedback:**
+**Step 4 - Determine Adopted Evidence Quality:**
+Based on Steps 1-3, identify which evidence items you are actually adopting for this recommendation (i.e., evidence that is sufficiently direct and relevant to the PICO). Report the collective GRADE quality of ONLY the adopted evidence as `evidence_quality`. Do NOT average in evidence that you rejected due to population mismatch, wrong comparator, or irrelevant outcomes.
+- If strength is "Insufficient Evidence" or "No Recommendation" → set `evidence_quality` to "Very Low"
+- If only indirect evidence was adopted (Conditional) → set `evidence_quality` to the grade of that indirect evidence
+
+**Step 5 - Address Previous Feedback:**
 If there is "Previous Attempt Feedback", explicitly acknowledge each issue and explain how you are correcting it.
 
 **Language Requirement:**
-All JSON output fields (`recommendation`, `rationale`, `caveats`) **must be written in Chinese**, as this is the final user-facing output. The `strength` field uses the fixed English labels below.
+All JSON output fields (`recommendation`, `rationale`, `caveats`) **must be written in Chinese**, as this is the final user-facing output. The `strength` and `evidence_quality` fields use the fixed English labels below.
 
 **Output Format:**
 
@@ -62,14 +70,16 @@ All JSON output fields (`recommendation`, `rationale`, `caveats`) **must be writ
 1. PICO Consistency Check results (population/intervention/outcome match assessment)
 2. Evidence sufficiency assessment (why sufficient or not)
 3. Strength determination logic (which specific evidence supports which conclusion)
-4. How you addressed any previous feedback
+4. Adopted evidence quality: which items were adopted and why, and their collective GRADE level
+5. How you addressed any previous feedback
 >
 
 **JSON:**
 ```json
 {{
-  "recommendation": "【中文】具体可执行的推荐内容，或"证据不足：[原因]"，或"无法推荐：[原因]"",
+  "recommendation": "【中文】具体可执行的推荐内容，或\"证据不足：[原因]\"，或\"无法推荐：[原因]\"",
   "strength": "Strong or Weak or Conditional or Consensus-based or Insufficient Evidence or No Recommendation",
+  "evidence_quality": "High or Moderate or Low or Very Low",
   "rationale": "【中文】引用具体证据条目支持推荐，如来自不同人群需明确说明",
   "caveats": [
     "【中文】列出PICO不匹配问题（如：证据来自成人人群，儿童适用性不确定）",
@@ -77,3 +87,4 @@ All JSON output fields (`recommendation`, `rationale`, `caveats`) **must be writ
   ]
 }}
 ```
+

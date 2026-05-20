@@ -75,7 +75,7 @@ class SchedulingLLM:
         # Format dimension scores
         dimension_scores_str = "\n".join(
             [
-                f"  - {dim}: {score:.2f}"
+                f"  - {dim}: {score:.2f}" if score is not None else f"  - {dim}: N/A"
                 for dim, score in observe.evaluation.dimension_scores.items()
             ]
         )

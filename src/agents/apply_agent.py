@@ -6,17 +6,29 @@ from src.state.schema import WorkflowState, Recommendation, EBMQuery, PICOQuery
 
 def _format_ebm_query(ebm_query: EBMQuery) -> str:
     """Format an EBMQuery into a concise human-readable description."""
-    parts = [f"类型: {ebm_query.query_type}"]
-    parts.append(f"患者/人群: {ebm_query.patient}")
-    parts.append(f"主要关注点: {ebm_query.primary_focus}")
-    if ebm_query.comparator:
-        parts.append(f"对照: {ebm_query.comparator}")
-    if ebm_query.reference_standard:
-        parts.append(f"参考标准: {ebm_query.reference_standard}")
-    parts.append(f"结局: {ebm_query.outcome}")
-    if ebm_query.time_horizon:
-        parts.append(f"时间范围: {ebm_query.time_horizon}")
-    return "; ".join(parts)
+    def _s(v: Any) -> str:
+        return str(v) if v is not None else "N/A"
+
+    qt = ebm_query.query_type
+    if qt == "pico":
+        return (f"Patient: {_s(ebm_query.patient)} | "
+                f"Intervention: {_s(ebm_query.primary_focus)} | "
+                f"Comparator: {_s(ebm_query.comparator)} | "
+                f"Outcome: {_s(ebm_query.outcome)}")
+    elif qt == "pird":
+        return (f"Patient: {_s(ebm_query.patient)} | "
+                f"Index Test: {_s(ebm_query.primary_focus)} | "
+                f"Reference Standard: {_s(ebm_query.reference_standard)} | "
+                f"Target Condition: {_s(ebm_query.outcome)}")
+    elif qt == "peo":
+        return (f"Patient: {_s(ebm_query.patient)} | "
+                f"Exposure: {_s(ebm_query.primary_focus)} | "
+                f"Outcome: {_s(ebm_query.outcome)}")
+    else:  # prognosis
+        return (f"Patient: {_s(ebm_query.patient)} | "
+                f"Prognostic Factor: {_s(ebm_query.primary_focus)} | "
+                f"Outcome: {_s(ebm_query.outcome)} | "
+                f"Time Horizon: {_s(ebm_query.time_horizon)}")
 
 
 def _format_pico_query(pico_query: PICOQuery) -> str:
@@ -105,7 +117,9 @@ class ApplyAgent(BaseAgent):
 
         evidence_summary = "\n\n".join(
             [
-                f"Evidence {i+1}:\nTitle: {e.title}\nQuality: {e.grade_level}\nSource: {e.source}"
+                f"Evidence {i+1}:\nTitle: {e.title}\nGRADE: {e.grade_level}\n"
+                f"Study Type: {e.study_type or 'Unknown'}\n"
+                f"Key Findings:\n{e.key_sentences or e.abstract or '（无摘要）'}"
                 for i, e in enumerate(appraisal.evidence)
             ]
         )
@@ -166,19 +180,15 @@ class ApplyAgent(BaseAgent):
             retry_response = self.llm.invoke(retry_prompt)
             rec_dict = self._parse_json(retry_response.content)
 
-        # Determine overall evidence quality
-        grades = [e.grade_level for e in appraisal.evidence if e.grade_level]
-        if "High" in grades:
-            evidence_quality = "High"
-        elif "Moderate" in grades:
-            evidence_quality = "Moderate"
-        elif "Low" in grades:
-            evidence_quality = "Low"
-        else:
+        # evidence_quality is now determined by the LLM itself (see apply_agent.txt Step 4).
+        # The LLM reports the quality of evidence it actually adopted, not all retrieved evidence.
+        # Fallback to "Very Low" if the field is missing or unrecognised.
+        _valid_qualities = {"High", "Moderate", "Low", "Very Low"}
+        evidence_quality = rec_dict.get("evidence_quality", "")
+        if evidence_quality not in _valid_qualities:
             evidence_quality = "Very Low"
 
-        # GRADE enforcement: clamp strength to match evidence quality.
-        # LLM may override this despite prompt instructions, so we enforce in Python.
+        # Safety clamp: enforce hard GRADE rules the LLM may still violate.
         llm_strength = rec_dict.get("strength", "Weak")
         if evidence_quality in ("Very Low", "Low") and llm_strength == "Strong":
             strength = "Weak"

@@ -11,13 +11,13 @@
 - 证据质量分布: {grade_distribution}
 - 最终推荐: {recommendation}
 
-## Assess Agent 输出
-{stage_output}
-
 ## 路由信息
 - 路由类型：{route_type}
 - 路由置信度：{route_confidence}
 - EBM查询描述：{ebm_query_description}
+
+## Assess Agent 输出
+{stage_output}
 
 # Audit Task
 
@@ -36,10 +36,19 @@
 ## 2. 推理链完整性审计
 逐段检查推理链的连接质量。
 
-**ask_to_acquire_link**：Ask阶段的PICO是否有效指导了Acquire阶段的检索？
-- `CLEAR`：检索策略直接来源于PICO，关键词与P/I/O要素对应明确；且检索词覆盖了 {route_type} 对应的关键维度（ebm_pico→P+I+O；ebm_pird→P+IndexTest+RefStd；ebm_peo→P+Exposure+O；ebm_prognosis→P+PrognosticFactor+O）
-- `WEAK`：关联存在但不够紧密，检索词覆盖了PICO的主要方面但有跳跃，或遗漏了 {route_type} 特定维度中的某个关键要素
-- `BROKEN`：检索策略与PICO脱节，检索了与PICO无关的主题
+**ask_to_acquire_link**：Ask阶段的结构化查询是否有效指导了Acquire阶段的检索？
+各 route_type 对应的审计重点：
+- ebm_pico:      关键词是否覆盖 Patient + Intervention + Outcome
+- ebm_pird:      关键词是否覆盖 Patient + Index Test + Target Condition
+- ebm_peo:       关键词是否覆盖 Patient + Exposure + Outcome
+- ebm_prognosis: 关键词是否覆盖 Patient + Prognostic Factor + Outcome
+- diagnostic_reasoning: 关键词是否覆盖 Clinical Presentation + 鉴别诊断方向
+- direct_answer: 不经过 Acquire 阶段，此项标注为 NA
+
+- `CLEAR`：检索策略直接来源于结构化查询，关键词与对应框架维度对应明确
+- `WEAK`：关联存在但不够紧密，检索词覆盖了主要维度但存在跳跃或遗漏
+- `BROKEN`：检索策略与结构化查询脱节，检索了完全无关的主题
+- `NA`：route_type 为 direct_answer，不适用
 
 **acquire_to_appraise_link**：Acquire阶段获取的证据是否被Appraise阶段正确评价？
 - `CLEAR`：评价了所有关键证据，GRADE评级与检索到的研究类型对应可追溯
@@ -77,18 +86,20 @@
 {{
   "completeness_audit": {{
     "original_question_answered": "YES | PARTIAL | NO",
-    "evidence_limitations_stated": "YES | NO | NA"
+    "evidence_limitations_stated": "YES | NO | NA",
+    "route_confidence_noted": "YES | NO | NA"
   }},
   "chain_audit": {{
-    "ask_to_acquire_link": "CLEAR | WEAK | BROKEN",
+    "ask_to_acquire_link": "CLEAR | WEAK | BROKEN | NA",
     "acquire_to_appraise_link": "CLEAR | WEAK | BROKEN",
     "appraise_to_apply_link": "CLEAR | WEAK | BROKEN"
   }},
   "consistency_audit": {{
     "grade_to_strength_consistent": "YES | MINOR_ISSUE | MAJOR_CONTRADICTION",
-    "no_internal_contradictions": "YES | MINOR_ISSUE | MAJOR_CONTRADICTION",
-    "route_confidence_noted": "YES | NO | NA"
+    "no_internal_contradictions": "YES | MINOR_ISSUE | MAJOR_CONTRADICTION"
   }},
-  "reasoning": "一句话说明整体推理链质量及主要问题"
+  "failures": ["具体失败项及原因（无失败则为空列表）"],
+  "overall_quality": "pass | fail | degraded"
 }}
 ```
+
