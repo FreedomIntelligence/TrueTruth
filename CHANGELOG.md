@@ -1,8 +1,27 @@
-# EBM 5A 系统改进记录
+# Changelog
 
-本文档记录系统在原始 MVP 基础上所做的两类主要改进：**运行时间优化**和**问题类型适配**。
+All notable changes to TrueTruth are documented here.
 
 ---
+
+## [Unreleased] — 2026-05-22
+
+### Changed
+- **Acquire stage**: replaced PubMed live search with Hypertension RAG service (`hypertension_rag_client.py`); removes `pubmed_api.py` and `local_evidence_db.py`
+- **Ask stage**: merged router + framework into a single LLM call (`router_unified.txt`), reducing Ask latency
+- **State schema**: `Evidence` gains `supporting_passages` field for passage-level citations
+- **Judge rubrics**: updated all five judge prompts to evaluate RAG-sourced evidence
+- **Startup**: concurrent LLM warm-up (agent / judge / scheduling) cuts cold-start latency
+- **Dependencies**: replaced `langchain` / `torch` / `chromadb` stack with `openai` + `httpx`
+
+### Removed
+- `src/tools/pubmed_api.py`
+- `src/tools/local_evidence_db.py`
+- `src/config/prompts/acquire_ranking.txt`
+
+---
+
+## Internal improvement notes
 
 ## 一、运行时间优化
 

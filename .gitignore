@@ -20,6 +20,17 @@ gemini文本生图.py
 nul
 .worktrees/
 
+# Internal / planning documents — not for public repo
+COMPLETION_SUMMARY.md
+IMPLEMENTATION_STATUS.md
+description.md
+五阶段Judge维度描述以及可能决策.md
+循证医学的核心方法与主要模型.pdf
+docs/internal/
+docs/plans/
+docs/superpowers/
+experiments/
+
 # hypertension/ is a separate git repository (its own .git/);
 # kept alongside ebm5a as a sibling sub-project, not as a submodule.
 hypertension/
