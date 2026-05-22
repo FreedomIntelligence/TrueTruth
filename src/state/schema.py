@@ -1,5 +1,5 @@
 from typing import TypedDict, Optional, List, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -15,20 +15,60 @@ class PICOQuery:
 
 
 @dataclass
+class EBMQuery:
+    """Structured clinical question supporting multiple EBM query frameworks"""
+
+    query_type: str  # "pico" | "pird" | "peo" | "prognosis" | "diagnostic_reasoning"
+    patient: str
+    primary_focus: str  # intervention / index_test / exposure / prognostic_factor
+    outcome: str
+    keywords: List[str]
+    comparator: Optional[str] = None  # comparison / reference_standard (PICO/PIRD)
+    reference_standard: Optional[str] = None  # gold standard for diagnostic questions
+    time_horizon: Optional[str] = None  # relevant for prognosis questions
+
+
+@dataclass
+class Passage:
+    """A supporting passage retrieved from a paper.
+
+    Sourced from hypertensiondb /search chunk-level results.  Multiple
+    passages from the same paper are grouped under one Evidence object.
+    """
+
+    section: str        # e.g. "结果/主要结局"
+    snippet: str        # <= 800 chars
+    score: float        # rerank_score from /search
+
+
+@dataclass
 class Evidence:
-    """Single piece of evidence"""
+    """A paper of evidence with its supporting passages.
+
+    Acquire fills evidence_id / title / year / language / tags /
+    supporting_passages / relevance_score from the hypertensiondb /search
+    response.
+
+    Appraise fills study_type / grade_level / rob_overall after appraising
+    the paper.
+    """
 
     title: str
-    source: str
-    pmid: Optional[str]
-    abstract: str
-    relevance_score: float
+    source: str                                       # "hypertensiondb"
+    relevance_score: float                            # = max(passage.score) within paper
+
+    # Filled by Acquire from hypertensiondb /search response:
+    evidence_id: Optional[str] = None                 # e.g. EV-RCT-2026-PENG-001
+    supporting_passages: List[Passage] = field(default_factory=list)
+    language: str = ""                                # zh | en | bilingual
+    tags: List[str] = field(default_factory=list)
+    year: Optional[int] = None
+
+    # Filled by Appraise:
     study_type: Optional[str] = None
-    publication_date: Optional[str] = None
-    grade_level: Optional[str] = None
-    pmcid: Optional[str] = None  # PMC article ID (local DB only)
-    full_text: Optional[str] = None  # Full text (local DB only, not passed to prompts)
-    key_sentences: Optional[str] = None  # Extracted span(s) relevant to query keywords
+    grade_level: Optional[str] = None                 # very_low | low | moderate | high
+    rob_overall: Optional[str] = None                 # low | some_concerns | high
+    publication_date: Optional[str] = None            # legacy; safe to leave None
 
 
 @dataclass
@@ -163,3 +203,13 @@ class WorkflowState(TypedDict):
     remaining_budget: int
     soft_gate_signals: List[str]
     question_type: Optional[str]
+    route_type: Optional[str]
+    route_confidence: Optional[float]
+    direct_answer_output: Optional[Dict[str, Any]]
+    ebm_query: Optional[EBMQuery]
+    sub_pico_queries: Optional[List[EBMQuery]]
+    sub_question_index: Optional[int]
+    sub_question_total: Optional[int]
+    # NEW: hypertension RAG refactor
+    out_of_domain: Optional[bool]       # True when Ask soft-rejected non-hypertension question
+    rag_degraded: Optional[List[str]]   # degradation tags from /search response

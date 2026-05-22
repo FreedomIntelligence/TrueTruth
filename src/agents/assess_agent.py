@@ -70,4 +70,27 @@ class AssessAgent(BaseAgent):
             backtrack_reason=assess_dict.get("backtrack_reason"),
         )
 
-        return {"assessment": assessment}
+        # Hard GRADE gate: Strong recommendation requires assess quality_score ≥ 0.70.
+        # Apply already clamps on evidence_quality, but the deterministic Assess score
+        # captures completeness / strength_consistency / reasoning_chain gaps that Apply
+        # cannot see. If the final audit disagrees with the strength label, downgrade.
+        result: Dict[str, Any] = {"assessment": assessment}
+        if recommendation.strength == "Strong" and quality_score < 0.70:
+            downgraded = recommendation.model_copy(update={
+                "strength": "Weak",
+                "caveats": list(recommendation.caveats) + [
+                    f"Strength 已由 Strong 自动下调为 Weak：Assess quality_score={quality_score:.2f} < 0.70，"
+                    "审计发现完整性/一致性/推理链/警示不足，不满足 Strong 推荐的硬门槛。"
+                ],
+            }) if hasattr(recommendation, "model_copy") else recommendation
+            if not hasattr(recommendation, "model_copy"):
+                downgraded.strength = "Weak"
+                downgraded.caveats = list(recommendation.caveats) + [
+                    f"Strength 已由 Strong 自动下调为 Weak：Assess quality_score={quality_score:.2f} < 0.70。"
+                ]
+            print(
+                f"[GRADE-CLAMP] Strong → Weak: quality_score={quality_score:.2f} < 0.70."
+            )
+            result["recommendation"] = downgraded
+
+        return result

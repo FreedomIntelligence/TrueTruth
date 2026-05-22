@@ -18,3 +18,8 @@ logs/
 .claude/
 gemini文本生图.py
 nul
+.worktrees/
+
+# hypertension/ is a separate git repository (its own .git/);
+# kept alongside ebm5a as a sibling sub-project, not as a submodule.
+hypertension/

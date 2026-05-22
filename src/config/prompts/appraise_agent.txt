@@ -2,9 +2,13 @@
 
 **你的任务：** 对每篇证据的GRADE评价因素进行分类判断，只输出结构化的分类标签，**不要自己计算或写出最终等级**（最终GRADE等级由系统代码根据你的分类自动计算）。
 
+**重要规则：若某篇证据的"Pre-computed fields"中已提供 `grade_level (pre-computed)` 或 `rob_overall (pre-computed)` 字段，你必须直接使用这些值，不得重新推断或覆盖。对应 JSON 输出中填入相同值即可。只对"无预计算字段"的证据进行推断。**
+
 ---
 
 ## 输入数据
+
+每篇证据以如下格式提供：标题、语言、年份、标签，以及从证据库中检索到的若干 supporting passages（各附所属节区名称和相关性分数）。**请基于这些 passages 中的内容进行评价，不要编造 passages 中未提及的数据。**
 
 **证据列表：**
 {evidence_list}
@@ -17,7 +21,9 @@
 ## GRADE分类规则
 
 ### 一、研究类型（study_type）
-仅根据摘要和来源判断研究设计类型（**必须从以下列表中选择一个**）：
+根据以下优先级判断研究设计类型（**必须从以下列表中选择一个**）：
+
+> **优先级规则**：若证据条目中提供了 `PubMed pub_types` 字段，**优先以此为准**，不要依赖摘要文字猜测。映射关系：`Randomized Controlled Trial` → `RCT`；`Meta-Analysis` → `META_ANALYSIS`；`Systematic Review` → `SYSTEMATIC_REVIEW`；`Observational Study` / `Cohort Study` → `COHORT`；`Case-Control Study` → `CASE_CONTROL`；`Practice Guideline` / `Guideline` → `GUIDELINE`；`Review`（不含 Systematic Review）→ `NARRATIVE_REVIEW`。仅在 pub_types 缺失或无法映射时，再参考摘要文字判断。
 - `RCT`：随机对照试验（初始等级：High）
 - `SYSTEMATIC_REVIEW`：系统综述（含明确检索方案和纳入标准，可含或不含Meta分析）（初始等级：High）
 - `META_ANALYSIS`：Meta分析（对多项原始研究进行定量统计合并）（初始等级：High）
@@ -30,34 +36,74 @@
 - `GUIDELINE`：临床实践指南（初始等级：Moderate，基于其引用的基础证据质量）
 - `EXPERT_OPINION`：专家意见、述评、共识声明（无原始数据或系统检索）（初始等级：Very Low）
 
+**included_study_type**（仅适用于 SYSTEMATIC_REVIEW / META_ANALYSIS / NMA）
+- `RCT`：该SR/MA主要纳入随机对照试验
+- `OBSERVATIONAL`：该SR/MA主要纳入观察性研究（队列、病例对照等）
+- `MIXED`：该SR/MA同时纳入RCT和观察性研究
+- `UNKNOWN`：无法从摘要判断纳入研究类型
+- `NA`：非SR/MA/NMA研究，不适用
+
 ### 二、降级因素（每项独立判断，基于摘要可推断的信息）
 
+> **研究类型豁免规则（GRADE标准）**：`NARRATIVE_REVIEW` 和 `EXPERT_OPINION` 初始等级本就是 Very Low，四项降级因素**一律填 `NA`**，升级因素同样填 `NA`，`upgrade_blocked_by_bias` 填 `false`。不要对这两类研究类型强行套用降级框架。
+>
+> **NA 的使用范围严格限定**：除 NARRATIVE_REVIEW/EXPERT_OPINION 外，RCT、SR/MA/NMA、COHORT、CASE_CONTROL、GUIDELINE 等所有其他研究类型，**必须**在 NOT_SERIOUS / SERIOUS / VERY_SERIOUS 中选择，不允许填 NA。"摘要截断导致信息不足"不是填 NA 的理由，信息不足时应保守评估（见各字段说明）。
+
 **risk_of_bias（偏倚风险）**
-- `NOT_SERIOUS`：无明显偏倚风险（如RCT报告了正规随机化和盲法）
-- `SERIOUS`：存在明显偏倚风险（如未提及盲法、开放标签、缺乏分配隐藏）→ **-1级**
+
+> **大型RCT豁免规则**：若摘要明确描述了以下任意一项，`risk_of_bias` 应为 `NOT_SERIOUS`，不得仅因"摘要未详述随机序列/分配隐藏方法"而降为 SERIOUS：
+> - "double-blind, placebo-controlled"（双盲安慰剂对照）
+> - "randomized, double-blind"
+> - 大型多中心 RCT（样本量 >1000）且摘要已明确双盲或安慰剂对照
+>
+> 判 SERIOUS 的条件：摘要**没有**提及盲法/随机化，或明确说明存在开放标签、无对照、选择偏倚等问题。
+
+- `NOT_SERIOUS`：无明显偏倚风险（RCT报告了盲法/随机化，或摘要已明确双盲安慰剂对照）
+- `SERIOUS`：存在明显偏倚风险，或摘要**完全未提及**盲法/随机化方法 → **-1级**
 - `VERY_SERIOUS`：存在严重偏倚风险（如无对照、严重选择偏倚）→ **-2级**
+- `NA`：**仅限** NARRATIVE_REVIEW / EXPERT_OPINION
 
 **inconsistency（不一致性）**
-- `NOT_SERIOUS`：当前证据内部或与其他证据结论一致
-- `SERIOUS`：与其他证据结论存在明显不一致 → **-1级**
-- `VERY_SERIOUS`：结论严重不一致，无法解释 → **-2级**
-- `NA`：仅有一篇研究，不适用
+
+> **单篇研究强制规则**：`inconsistency` 评估的是**同一证据体内多项研究之间**的结论一致性。对于**单篇独立研究**（RCT、COHORT、CASE_CONTROL、CROSS_SECTIONAL 等非 SR/MA/NMA），**必须填 `NA`**，不允许填 NOT_SERIOUS/SERIOUS/VERY_SERIOUS。
+>
+> 不得将"与证据列表中其他研究的 PICO 不同"解读为单篇研究的 inconsistency，那属于 indirectness 的范畴。
+
+- `NOT_SERIOUS`：（仅适用于 SR/MA/NMA）纳入研究间结论一致，无明显异质性
+- `SERIOUS`：（仅适用于 SR/MA/NMA）纳入研究间存在明显不一致 → **-1级**
+- `VERY_SERIOUS`：（仅适用于 SR/MA/NMA）结论严重不一致，I²极高 → **-2级**
+- `NA`：**单篇研究**（RCT/COHORT等），或 NARRATIVE_REVIEW / EXPERT_OPINION
 
 **indirectness（间接性）**
-- `NOT_SERIOUS`：研究人群、干预和结局与PICO基本吻合
-- `SERIOUS`：存在明显间接性（如不同人群、代理结局）→ **-1级**
-- `VERY_SERIOUS`：严重间接性（如完全不同的人群或干预）→ **-2级**
+
+> **判断基准**：indirectness 只针对**该研究本身**的 P/I/C/O 与当前目标 PICO 的匹配程度，不与证据列表中其他研究比较。即使其他研究的 PICO 与目标不同，也不影响本研究的 indirectness 评分。
+
+判断时逐一核对**该研究**的 P/I/C/O 与目标 PICO 的对应要素：
+
+- `NOT_SERIOUS`：研究人群的疾病诊断/阶段与目标 PICO 一致，干预和结局也基本吻合
+- `SERIOUS`：存在以下任一情形 → **-1级**
+  - 研究人群的**疾病诊断或疾病阶段**与目标 PICO 不同（如糖尿病前期 vs 确诊 T2DM）
+  - 研究报告的是**代理结局**（如 HbA1c）而目标 PICO 要求**临床结局**（如心血管事件）
+  - 干预或对照与目标 PICO 存在明显差异
+- `VERY_SERIOUS`：上述多项同时存在，或该研究的人群/干预与目标 PICO 完全不同 → **-2级**
+- `NA`：**仅限** NARRATIVE_REVIEW / EXPERT_OPINION
 
 **imprecision（不精确性）**
-- `NOT_SERIOUS`：样本量足够，置信区间窄，结论稳定
-- `SERIOUS`：样本量有限或置信区间宽，存在不确定性 → **-1级**
+
+> **摘要截断处理原则**：若摘要中无效应量/CI/样本量信息，不能直接填 NA。应根据研究类型和规模综合判断：大型RCT/SR通常样本量充足可填 NOT_SERIOUS；若完全无法判断，保守填 SERIOUS；`NA` 仅限 NARRATIVE_REVIEW/EXPERT_OPINION。
+
+- `NOT_SERIOUS`：样本量足够，置信区间窄，结论稳定；或大型研究摘要虽无CI但规模已知足够
+- `SERIOUS`：样本量有限、置信区间宽，或无法从摘要评估精确性 → **-1级**
 - `VERY_SERIOUS`：样本量极少或置信区间极宽，结论极不稳定 → **-2级**
+- `NA`：**仅限** NARRATIVE_REVIEW / EXPERT_OPINION
 
 **publication_bias（发表偏倚）**
 - `SUSPECTED`：有发表偏倚迹象（如只有阳性结果的小样本研究）→ **-1级**
 - `UNDETECTED`：未发现发表偏倚迹象
 
 ### 三、升级因素（仅适用于 COHORT / CASE_CONTROL 研究）
+
+> **注意：** 若 risk_of_bias = SERIOUS 或 VERY_SERIOUS，升级因素**不生效**（upgrade_blocked_by_bias = true）。
 
 **large_effect（效应量大）**
 - `YES`：相对风险 > 2 或 < 0.5，且一致 → **+1级**
@@ -68,6 +114,15 @@
 - `YES`：存在明确的剂量-反应梯度 → **+1级**
 - `NO`：无剂量-反应关系
 - `NA`：不适用
+
+**confounding_bias_mitigates（混杂偏倚减弱效应）**
+- `YES`：存在未控制的混杂因素，但其方向会使真实效应被低估，即真实效应可能更强 → **+1级**
+- `NO`：混杂因素不支持升级
+- `NA`：不适用（RCT、SR/MA 或无相关混杂信息）
+
+**upgrade_blocked_by_bias**（布尔值）：
+- `true`：risk_of_bias = SERIOUS 或 VERY_SERIOUS，所有升级因素被阻断，不生效
+- `false`：偏倚风险不严重，升级因素可正常生效
 
 ---
 
@@ -112,13 +167,16 @@
     {{
       "evidence_id": 1,
       "study_type": "RCT | SYSTEMATIC_REVIEW | META_ANALYSIS | NMA | COHORT | CASE_CONTROL | CROSS_SECTIONAL | NARRATIVE_REVIEW | CASE_REPORT | GUIDELINE | EXPERT_OPINION",
-      "risk_of_bias": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
+      "included_study_type": "RCT | OBSERVATIONAL | MIXED | UNKNOWN | NA",
+      "risk_of_bias": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS | NA",
       "inconsistency": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS | NA",
-      "indirectness": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
-      "imprecision": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS",
+      "indirectness": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS | NA",
+      "imprecision": "NOT_SERIOUS | SERIOUS | VERY_SERIOUS | NA",
       "publication_bias": "SUSPECTED | UNDETECTED",
       "large_effect": "YES | NO | NA",
       "dose_response": "YES | NO | NA",
+      "confounding_bias_mitigates": "YES | NO | NA",
+      "upgrade_blocked_by_bias": true,
       "rationale": "一句话说明主要的降级或升级理由"
     }}
   ],
@@ -136,3 +194,4 @@
   "evidence_summary": "对整体证据体的简要总结，包括最高层级证据类型和整体质量特征"
 }}
 ```
+

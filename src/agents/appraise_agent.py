@@ -12,17 +12,31 @@ from src.state.schema import WorkflowState, AppraisalResults
 # Initial GRADE points by study type (4=High, 3=Moderate, 2=Low, 1=Very Low)
 _INITIAL_POINTS: Dict[str, int] = {
     "RCT": 4,
-    "SYSTEMATIC_REVIEW": 4,  # Starts High (synthesizes RCTs or best available evidence)
-    "META_ANALYSIS": 4,  # Starts High
-    "NMA": 4,  # Network meta-analysis: starts High
+    "SYSTEMATIC_REVIEW": 4,  # Dynamic: overridden by _SR_INITIAL_POINTS when included_study_type is known
+    "META_ANALYSIS": 4,
+    "NMA": 4,
     "COHORT": 2,
     "CASE_CONTROL": 2,
     "CROSS_SECTIONAL": 2,  # Observational: starts Low
-    "NARRATIVE_REVIEW": 1,  # Expert synthesis without systematic search: Very Low
+    "NARRATIVE_REVIEW": 1,
     "CASE_REPORT": 1,
-    "GUIDELINE": 3,  # Typically based on SR: starts Moderate
-    "EXPERT_OPINION": 1,  # No systematic search: Very Low
+    "GUIDELINE": 3,
+    "EXPERT_OPINION": 1,
 }
+
+# For SR/MA/NMA: initial points depend on the type of included studies
+_SR_INITIAL_POINTS: Dict[str, int] = {
+    "RCT": 4,
+    "OBSERVATIONAL": 2,
+    "MIXED": 3,
+    "UNKNOWN": 3,
+}
+
+# Study types that are SRs/MAs (use _SR_INITIAL_POINTS when included_study_type is set)
+_SR_TYPES = {"SYSTEMATIC_REVIEW", "META_ANALYSIS", "NMA"}
+
+# Only these observational study types are eligible for upgrade factors
+_UPGRADE_STUDY_TYPES = {"COHORT", "CASE_CONTROL"}
 
 # Mapping from GRADE codes to human-readable study type labels
 # (used to sync evidence.study_type with Appraise classification)
@@ -70,29 +84,48 @@ def _compute_grade(appraisal: Dict) -> str:
     Deterministically compute GRADE level from LLM classification labels.
 
     Rules:
-      - Start from initial points based on study_type
-      - Deduct for each downgrade factor (risk_of_bias, inconsistency,
-        indirectness, imprecision, publication_bias)
-      - Add for upgrade factors (large_effect, dose_response)
-        only when study_type is observational (COHORT / CASE_CONTROL)
-      - Clamp result to [1, 4] and map to label
+      1. Initial points:
+         - SR/MA/NMA: use _SR_INITIAL_POINTS keyed by included_study_type
+           (RCT→4, OBSERVATIONAL→2, MIXED→3, UNKNOWN→3); fall back to 4.
+         - All other types: use _INITIAL_POINTS.
+      2. Downgrade for each factor (risk_of_bias, inconsistency, indirectness,
+         imprecision) and for suspected publication_bias.
+      3. Upgrade (large_effect, dose_response) only when:
+         - study_type is in _UPGRADE_STUDY_TYPES (COHORT or CASE_CONTROL), AND
+         - risk_of_bias is NOT_SERIOUS (serious bias blocks upgrades).
+         Upgraded points are capped at min(points, 3) — observational evidence
+         cannot reach High (4) through upgrades alone.
+      4. Clamp to [1, 4] and map to label.
     """
     study_type = appraisal.get("study_type", "CASE_REPORT")
-    points = _INITIAL_POINTS.get(study_type, 1)
 
-    # Downgrade factors
+    # Step 1: initial points
+    if study_type in _SR_TYPES:
+        included = appraisal.get("included_study_type", "UNKNOWN")
+        points = _SR_INITIAL_POINTS.get(included, _SR_INITIAL_POINTS["UNKNOWN"])
+    else:
+        points = _INITIAL_POINTS.get(study_type, 1)
+
+    # Step 2: downgrade factors
     for factor in ("risk_of_bias", "inconsistency", "indirectness", "imprecision"):
         points -= _DOWNGRADE_PENALTY.get(appraisal.get(factor, "NOT_SERIOUS"), 0)
 
     if appraisal.get("publication_bias") == "SUSPECTED":
         points -= 1
 
-    # Upgrade factors (observational studies only)
-    if study_type in ("COHORT", "CASE_CONTROL", "CROSS_SECTIONAL"):
+    # Step 3: upgrade factors — only for COHORT/CASE_CONTROL with no serious bias
+    if (
+        study_type in _UPGRADE_STUDY_TYPES
+        and appraisal.get("risk_of_bias", "NOT_SERIOUS") == "NOT_SERIOUS"
+    ):
         if appraisal.get("large_effect") == "YES":
             points += 1
         if appraisal.get("dose_response") == "YES":
             points += 1
+        if appraisal.get("confounding_bias_mitigates") == "YES":
+            points += 1
+        # Observational evidence cannot reach High (4) through upgrades alone
+        points = min(points, 3)
 
     points = max(1, min(4, points))
     return _POINTS_TO_GRADE[points]
@@ -134,22 +167,33 @@ class AppraiseAgent(BaseAgent):
         return robust_parse_json(content)
 
     def _format_evidence_list(self, evidence_list) -> str:
-        """Format evidence list for the prompt, including abstract preview."""
+        """Format evidence list for the prompt using supporting passages."""
         parts = []
         for i, e in enumerate(evidence_list):
-            abstract_preview = (getattr(e, "abstract", "") or "")[:200]
-            study_type_hint = getattr(e, "study_type", "") or ""
-            hint_str = (
-                f"\nSource DB study_type hint: {study_type_hint}"
-                if study_type_hint
-                else ""
-            )
+            passages_text = "\n".join(
+                f"  [{j+1}] Section: {p.section} (score: {p.score:.2f})\n      \"{p.snippet}\""
+                for j, p in enumerate(e.supporting_passages)
+            ) or "  （无 passages）"
+
+            # Pre-computed metadata from frontmatter (authoritative when present)
+            pre_computed = []
+            if e.study_type:
+                pre_computed.append(f"study_type (pre-computed): {e.study_type}")
+            if e.grade_level:
+                pre_computed.append(f"grade_level (pre-computed, DO NOT re-derive): {e.grade_level}")
+            if e.rob_overall:
+                pre_computed.append(f"rob_overall (pre-computed, DO NOT re-derive): {e.rob_overall}")
+            pre_str = "\n".join(pre_computed) if pre_computed else "（无预计算字段，请从 passages 推断）"
+
             parts.append(
                 f"Evidence {i + 1}:\n"
                 f"Title: {e.title}\n"
                 f"Source: {e.source}\n"
-                f"PMID: {e.pmid}{hint_str}\n"
-                f"Abstract (preview): {abstract_preview}"
+                f"Evidence ID: {e.evidence_id or 'unknown'}\n"
+                f"Year: {e.year or 'unknown'} | Language: {e.language or 'unknown'}\n"
+                f"Tags: {', '.join(e.tags) if e.tags else 'none'}\n"
+                f"Pre-computed fields:\n{pre_str}\n"
+                f"Supporting passages:\n{passages_text}"
             )
         return "\n\n".join(parts)
 
@@ -222,7 +266,16 @@ class AppraiseAgent(BaseAgent):
         """Execute Appraise agent to classify GRADE factors and compute final grades."""
         evidence_list = state.get("evidence_list")
         if not evidence_list:
-            raise ValueError("No evidence found in state")
+            # Graceful terminate — Coordinator should have caught this, but guard here too
+            state["should_terminate"] = True
+            state["backtrack_reason"] = "Appraise: evidence_list is empty, cannot proceed."
+            return {
+                "appraisal_results": None,
+                "grade_rationales": [],
+                "numerical_confidence": 0.0,
+                "numerical_data": {"data_available": "NO", "confidence_level": "VERY_LOW", "note": "No evidence available"},
+                "bias_inconsistency": False,
+            }
 
         backtrack_context = ""
         if state.get("backtrack_reason"):
@@ -265,16 +318,40 @@ class AppraiseAgent(BaseAgent):
         graded_evidence = []
 
         for i, evidence in enumerate(evidence_list):
-            # Match by index (LLM outputs in same order as input)
             appraisal = study_appraisals[i] if i < len(study_appraisals) else {}
 
             study_type = appraisal.get("study_type", "CASE_REPORT")
-            computed_grade = _compute_grade(appraisal)
 
-            # Set grade and sync study_type on the Evidence object
-            # (overrides acquire_agent keyword-inferred label with Appraise LLM classification)
+            # If pre-computed grade/rob are available from frontmatter metadata,
+            # use them directly instead of LLM-derived values.
+            if evidence.grade_level and evidence.rob_overall:
+                # Map pre-computed grade string to our internal label
+                _GRADE_STR_MAP = {
+                    "high": "High", "moderate": "Moderate",
+                    "low": "Low", "very_low": "Very Low",
+                }
+                computed_grade = _GRADE_STR_MAP.get(
+                    evidence.grade_level.lower(), evidence.grade_level
+                )
+                # GRADE standard: only "high" RoB (serious bias confirmed) warrants
+                # downgrade.  "some_concerns" means possible bias but impact on
+                # conclusion is uncertain — do NOT automatically downgrade.
+                appraisal["risk_of_bias"] = {
+                    "low": "NOT_SERIOUS",
+                    "some_concerns": "NOT_SERIOUS",
+                    "high": "SERIOUS",
+                }.get(evidence.rob_overall.lower(), "NOT_SERIOUS")
+            else:
+                computed_grade = _compute_grade(appraisal)
+
+            # Sync study_type from pre-computed field if available
+            if evidence.study_type:
+                # Already set from RAG client metadata
+                pass
+            else:
+                evidence.study_type = _GRADE_CODE_TO_LABEL.get(study_type, study_type)
+
             evidence.grade_level = computed_grade
-            evidence.study_type = _GRADE_CODE_TO_LABEL.get(study_type, study_type)
             graded_evidence.append(evidence)
 
             # Build rich rationale record for downstream consumers (including Judge)
@@ -286,6 +363,7 @@ class AppraiseAgent(BaseAgent):
                     "evidence_id": i + 1,
                     "title": evidence.title,
                     "study_type": study_type,
+                    "included_study_type": appraisal.get("included_study_type", "NA"),
                     "initial_grade": initial_grade,
                     "risk_of_bias": appraisal.get("risk_of_bias", "NOT_SERIOUS"),
                     "inconsistency": appraisal.get("inconsistency", "NA"),
@@ -294,6 +372,11 @@ class AppraiseAgent(BaseAgent):
                     "publication_bias": appraisal.get("publication_bias", "UNDETECTED"),
                     "large_effect": appraisal.get("large_effect", "NA"),
                     "dose_response": appraisal.get("dose_response", "NA"),
+                    "confounding_bias_mitigates": appraisal.get("confounding_bias_mitigates", "NA"),
+                    "upgrade_blocked_by_bias": (
+                        study_type in _UPGRADE_STUDY_TYPES
+                        and appraisal.get("risk_of_bias") in ("SERIOUS", "VERY_SERIOUS")
+                    ),
                     "computed_grade": computed_grade,
                     "rationale": appraisal.get("rationale", ""),
                 }

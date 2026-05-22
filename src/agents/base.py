@@ -63,12 +63,41 @@ def robust_parse_json(content: str) -> dict:
     repaired = _attempt_json_repair(raw)
     try:
         return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # Stage 4: strip rationale/reasoning fields that may contain unescaped quotes
+    stripped = re.sub(
+        r'"(rationale|reasoning|explanation|summary)"\s*:\s*"(?:[^"\\]|\\.)*"',
+        r'"\1": ""',
+        repaired,
+        flags=re.DOTALL,
+    )
+    try:
+        return json.loads(stripped)
     except json.JSONDecodeError as final_err:
         raise ValueError(
             f"JSON parse failed after repair attempt.\n"
             f"Error: {final_err}\n"
             f"Raw excerpt (first 300 chars): {raw[:300]}"
         )
+
+
+# Marker used in prompt templates to separate the static system portion from
+# the variable user portion. Splitting on this marker enables system-message
+# prompt caching at the huatuogpt.cn gateway (verified 2026-05-18: cuts
+# prompt_tokens by ~98% on repeated calls with the same static prefix).
+SYSTEM_USER_MARKER = "%%USER_INPUT_BELOW%%"
+
+
+def split_prompt_for_caching(formatted: str) -> dict | str:
+    """Split a formatted prompt on SYSTEM_USER_MARKER into a system+user dict
+    suitable for passing to _LLMClient.invoke(). If the marker is absent,
+    returns the original string unchanged."""
+    if SYSTEM_USER_MARKER not in formatted:
+        return formatted
+    system, user = formatted.split(SYSTEM_USER_MARKER, 1)
+    return {"system": system.strip(), "user": user.strip()}
 
 
 class BaseAgent(ABC):

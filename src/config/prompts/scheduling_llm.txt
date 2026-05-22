@@ -39,6 +39,8 @@
 - 问题出在**当前阶段的执行**（如输出格式错误、LLM暂时偏差）？→ 候选动作：`retry_current`
 - 问题出在**当前阶段的输入**（如PICO不准确导致检索方向错误）？→ 候选动作：`backtrack_to_上游阶段`
 - 问题属于**轻微瑕疵**（Minor且评分通过）？→ 候选动作：`proceed`
+- 问题属于**呈现/格式缺陷**（如 citation_traceable、recommendation_specific、patient_preference_considered）？→ 候选动作：`retry_current`，**绝不 backtrack 到 Acquire 或更早**
+- **Acquire 找到了文章但证据不够精准/间接性高**？→ 候选动作：`proceed`，**绝不 backtrack_to_acquire**（见下方核心原则）
 
 **动作语义的关键区分**：
 
@@ -48,6 +50,26 @@
 | `backtrack_to_X` | 修正输入：上游阶段的输出质量有根本性问题 | 当前阶段的输入数据有缺陷（如PICO要素缺失、证据完全无关） |
 
 **最小充分回退原则**：回退目标应是造成问题的**最近上游阶段**，而非更远的阶段。只有当问题的根源确实在更早的阶段时，才考虑跨越多个阶段回退。
+
+---
+
+### ★ backtrack_to_acquire 的严格触发条件（核心原则）
+
+`backtrack_to_acquire` **只在以下两种情况下允许使用**：
+
+1. **Acquire 返回 0 篇结果**：检索完全失败，没有任何文章可以评价
+2. **检索到的证据与临床问题完全无关**：疾病/干预与 PICO 根本不同（如问心脏病却检索到骨科文献）
+
+**以下情况严禁 backtrack_to_acquire，应选择 proceed**：
+
+- Acquire 找到了文章（哪怕只有 1 篇），但证据质量低、间接性高、研究设计不理想
+- 证据人群与 PICO 人群有差异（如稳定型 vs 急性期）但属于同一疾病
+- 缺少高级别研究（无 SR/RCT），但有观察性研究
+- study_design_matches_route=PARTIAL：说明证据存在但研究设计不完全匹配
+
+**理由**：证据间接性和质量不理想是 GRADE 框架中 `indirectness` 和 `imprecision` 降级因素的处理范畴，由 Appraise 打分、Apply 在推荐强度和 caveats 中如实表达（Weak/Conditional 推荐），而不是拒绝推荐。重新检索无法凭空创造不存在的高质量证据，只会浪费预算。
+
+---
 
 ### Step 2：计算回退代价
 
@@ -81,6 +103,34 @@
 #### low_confidence_data（数值置信度低）
 MVP阶段属正常，不自动触发回退，可作为输出的注意事项。
 
+#### appraise_gate_fail（Appraise阶段Gate失败）
+当 Appraise 阶段出现 CRITICAL 问题（如 computed_grade_reasonable=NO 或 study_type_correct 错误）时：
+- **应选择 `retry_current`**：这是 Appraise 内部的执行问题（LLM对研究类型或GRADE因素的判断偏差），重试通常能修正。
+- **不应选择 `backtrack_to_acquire`**：证据本身没有问题，重新检索无法解决评价逻辑错误。
+- 只有当 Appraise 连续失败3次以上，且每次失败原因相同，才考虑 `backtrack_to_acquire`。
+
+#### apply_presentation_issues（Apply 输出呈现类问题）
+以下问题属于 **Apply Agent 的输出格式/呈现缺陷**，根本原因在 Apply 内部，与上游证据无关。
+无论这些问题被 Judge 标注为 MAJOR 还是 MINOR，**只允许 `retry_current`，严禁 `backtrack_to_acquire` 或更早阶段**：
+
+- `citation_traceable=NO`：Apply 使用了内部编号（"证据1/2/3"）而非 PMID/标题，不代表证据不存在或来源不可靠，重试时提示 Apply 写出 PMID 即可修复。
+- `recommendation_specific=NO/PARTIAL`：推荐内容过于模糊，是 Apply 的表述问题，不是证据问题，重试可修复。
+- `patient_preference_considered=NO`：Apply 遗漏了患者偏好讨论，是输出完整性问题，重试可修复。
+
+**误判识别**：如果你看到 Apply 阶段出现上述问题，并且你倾向于 `backtrack_to_acquire`，请停止——你正在把"Apply 没写清楚"误读成"证据不足"。
+
+#### technical_limitation（技术限制类问题）
+以下问题由技术或数据可得性限制导致，**重新检索无法修复，应选择 `proceed`**：
+
+- `key_sentences_present=NO`（Acquire Judge）：RAG 未能提取关键句，通常因为对应文章没有 PMC 开放全文。重新检索同一批文章不会改变 PMC 开放获取状态，应直接 proceed。
+- `study_design_matches_route=PARTIAL/NO` 且 Acquire 已重试 ≥2 次：该临床问题领域本身可能缺乏高级别研究（无 SR/诊断准确性研究等），重新检索不能凭空创造不存在的证据，应 proceed 让 Apply 如实输出 Insufficient Evidence。
+
+
+- **根因在 Appraise**：LLM 对 risk_of_bias / indirectness / imprecision 等因素的严重程度判断有误，导致 GRADE 等级偏高或偏低。
+- **应选择 `retry_current`**：重新运行 Appraise，让 LLM 重新评估降级因素。
+- **不应选择 `backtrack_to_apply`**：Apply 的输出（如 evidence_quality 偏高）是 Appraise 错误的下游症状，不是 Apply 本身的问题；重跑 Apply 无法修正上游的 GRADE 计算错误。
+- 只有当 Appraise 连续重试3次以上仍然失败，才考虑 `backtrack_to_acquire`（检索到的证据本身可能不适合回答该问题）。
+
 ### Step 5：综合判断
 
 结合以上分析，参考决策矩阵：
@@ -104,8 +154,8 @@ MVP阶段属正常，不自动触发回退，可作为输出的注意事项。
 1. **proceed** - 前进到下一阶段（Ask→Acquire→Appraise→Apply→Assess）
 2. **backtrack_to_ask** - 回退到Ask阶段（重新提取PICO；通常只在PICO根本性错误时选择）
 3. **backtrack_to_acquire** - 回退到Acquire阶段（重新检索；上游PICO正确但检索方向错误）
-4. **backtrack_to_appraise** - 回退到Appraise阶段（重新评价证据；评价有根本性错误）
-5. **backtrack_to_apply** - 回退到Apply阶段（重新生成推荐；推荐与证据不符）
+4. **backtrack_to_appraise** - 回退到Appraise阶段（重新评价证据；评价有根本性错误，如降级因素标注系统性偏差）
+5. **backtrack_to_apply** - 回退到Apply阶段（**仅从 Assess 阶段使用**；从 Apply 阶段重跑 Apply 请用 `retry_current`，不要用此动作，否则会被计入死循环计数）
 6. **retry_current** - 原地重试当前阶段（修正执行，不修改上游输入）
 7. **terminate** - 终止workflow（证据不足、检索穷尽、无法继续等情况）
 8. **request_human_review** - 请求人类审核
@@ -116,17 +166,12 @@ MVP阶段属正常，不自动触发回退，可作为输出的注意事项。
 
 ```json
 {{
-  "reasoning": "按Step 1-5的框架阐述推理：
-    1. 问题根源分析（执行问题 vs 输入问题）
-    2. 回退代价估算（需要重跑几步，剩余预算够吗）
-    3. 历史策略检查（是否重复过同样策略）
-    4. 特殊信号处理（如有）
-    5. 最终决策依据",
+  "reasoning": "1-2句话说明核心决策依据（根因在哪里、选择该动作的理由）",
 
   "action": "proceed | backtrack_to_ask | backtrack_to_acquire | backtrack_to_appraise | backtrack_to_apply | retry_current | terminate | request_human_review",
 
   "parameters": {{
-    "adjust_strategy": "具体调整策略（引用issues中的description作为修改指令）",
+    "adjust_strategy": "具体调整指令（引用issues中的description）",
     "focus_on": "需要重点关注的维度",
 
     // 仅在 request_human_review 时补充：
@@ -141,10 +186,9 @@ MVP阶段属正常，不自动触发回退，可作为输出的注意事项。
 
 ## 决策要求
 
-- **代价优先**：在质量相近的情况下，优先选择代价更小的动作（retry > backtrack_近 > backtrack_远）
-- **参考决策矩阵**：Minor问题且通过评估时通常应proceed，避免过度保守
-- **引用修改建议**：adjust_strategy字段应引用issues中的description，确保Agent收到具体的修复指令
-- **避免无效重复**：多次回退到同一阶段无改善时，升级策略或终止
-- 你的reasoning将被记录用于审计和系统改进，请清晰阐述决策逻辑
+- **代价优先**：retry > backtrack_近 > backtrack_远
+- **Minor问题且通过评估**：直接proceed
+- **adjust_strategy**：引用issues中的description作为具体修复指令
+- **避免无效重复**：多次回退同一阶段无改善时升级策略或终止
 
-请开始推理和决策：
+请直接输出JSON，不要添加额外说明：
