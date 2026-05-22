@@ -10,8 +10,8 @@
 Acquire Agent 输出（已排序的证据列表）：{stage_output}
 
 # 预处理：系统错误检测
-首先检查输入数据中是否包含 error 字段（如 "error": "Connection timeout"）：
-如果存在 error 字段，说明 PubMed API 调用本身失败，与检索词无关。
+首先检查输入数据中是否包含 error 字段（如 "error": "hypertension_api_unavailable: ..."）：
+如果存在 error 字段，说明 hypertensiondb RAG 服务本身失败，与检索词无关。
 此时跳过所有审计项，直接输出：search_terms_valid=YES，所有 rubric 填 NA，search_exhausted=false，failures=[]，overall_quality=pass。
 
 # 一票否决项（Gate）
@@ -30,10 +30,10 @@ Acquire Agent 输出（已排序的证据列表）：{stage_output}
 - ebm_prognosis：Prognostic Factor
 
 ## R1. keywords_cover_pico_dimensions【Critical，权重3】
-关键词是否覆盖 P + 主焦点维度，且至少含一个可在 MeSH 验证的标准词？
-- YES：覆盖 P + 主焦点维度，且含 MeSH 标准词
-- PARTIAL：覆盖了 P 或主焦点之一，但另一维度无对应关键词；或有覆盖但无 MeSH 标准词
-- NO：关键词全部指向同一概念，未覆盖多个维度
+自然语言中文检索语句（search_query 字段）是否覆盖 P + 主焦点维度？
+- YES：query 紧扣 P 和主焦点，含具体的疾病/干预/对比术语
+- PARTIAL：query 覆盖了 P 或主焦点之一，但另一维度模糊
+- NO：query 方向偏离，未紧扣 PICO 主焦点
 
 ## R2. primary_focus_match【Critical，权重3】
 基于证据列表中主焦点匹配度最好的那篇证据判断：证据中的核心干预/暴露/测试是否与查询主焦点维度匹配？
@@ -54,16 +54,16 @@ Acquire Agent 输出（已排序的证据列表）：{stage_output}
 - NO：未报告任何相关结局
 
 ## R4. keywords_have_synonyms【Major，权重2】
-核心概念是否有同义词/变体（如 SGLT2i + empagliflozin + dapagliflozin）？
-- YES：有同义词/变体
-- PARTIAL：有部分同义词但不完整
-- NO：无任何同义词扩展，仅有单一术语
+检索语句是否包含核心概念的同义表达或别名（如同时提到"缬沙坦"和"ARB"），或语义足够丰富以匹配多种表述？
+- YES：query 自然涵盖核心概念的常见同义表达
+- PARTIAL：仅提到单一术语但语义已足够明确
+- NO：query 极短/缩略，未覆盖任一同义表达
 
 ## R5. keywords_count_sufficient【Major，权重2】
-关键词数量是否充足？
-- YES：≥ 5 个
-- PARTIAL：3-4 个
-- NO：≤ 2 个
+检索语句是否表意完整（包含人群+干预+结局至少三个语义要素）？
+- YES：包含 ≥3 个语义要素
+- PARTIAL：包含 2 个语义要素
+- NO：仅 1 个语义要素或纯关键词堆砌
 
 ## R6. study_design_matches_route【Major，权重2】
 纳入文献的研究设计是否与 route_type 的优先级匹配？
@@ -99,17 +99,17 @@ Acquire Agent 输出（已排序的证据列表）：{stage_output}
 - NO：明显不合理（大量高质量候选却只选1-2篇，或质量极差仍凑满10篇）
 
 ## R10. key_sentences_present【Minor，权重1】
-Top 文章的 key_sentences 字段是否有实质内容？
-- YES：Top 文章的 key_sentences 非空，RAG 流程正常执行
-- PARTIAL：部分文章 key_sentences 为空（摘要极短导致 chunk 失败）
-- NO：所有文章 key_sentences 均为空，RAG 流程可能失败
+Top 文章是否带有 supporting_passages（含 section + snippet）字段？
+- YES：所有 Top 文章 supporting_passages 均非空，且 snippet 与查询相关
+- PARTIAL：部分文章 supporting_passages 为空或 snippet 与查询关系较弱
+- NO：所有 Top 文章 supporting_passages 均为空，RAG 检索可能失败
 
-## 5. 全文与 RAG 质量审计（full_text_audit）
+## 5. RAG 服务降级审计（rag_degraded_audit）
 
-**full_text_coverage**：Top 文章（排名前3）中，has_full_text=True 的比例是否合理？
-- `GOOD`：≥2/3 篇有全文
-- `PARTIAL`：1/3 篇有全文，或全文获取部分失败
-- `NONE`：Top 3 篇均无全文
+**rag_degraded**：响应中是否报告了组件降级？
+- `OK`：rag_degraded 为空或 None，所有组件正常
+- `PARTIAL`：dense 或 rerank 单路降级，结果仍可用
+- `MAJOR`：两路均降级或服务不可达
 
 # Output Format
 仅输出以下 JSON，不要包含任何其他文本：
@@ -133,8 +133,11 @@ Top 文章的 key_sentences 字段是否有实质内容？
     "key_sentences_present": "YES | PARTIAL | NO"
   }},
   "full_text_audit": {{
-    "full_text_coverage": "GOOD | PARTIAL | NONE",
+    "full_text_coverage": "NA",
     "key_sentences_present": "YES | PARTIAL | NO"
+  }},
+  "rag_degraded_audit": {{
+    "rag_degraded": "OK | PARTIAL | MAJOR"
   }},
   "search_exhausted": false,
   "failures": ["具体失败项及原因（无失败则为空列表）"],

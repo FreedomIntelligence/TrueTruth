@@ -167,30 +167,33 @@ class AppraiseAgent(BaseAgent):
         return robust_parse_json(content)
 
     def _format_evidence_list(self, evidence_list) -> str:
-        """Format evidence list for the prompt, including full abstract and pub_types."""
+        """Format evidence list for the prompt using supporting passages."""
         parts = []
         for i, e in enumerate(evidence_list):
-            abstract = (getattr(e, "abstract", "") or "")
-            study_type_hint = getattr(e, "study_type", "") or ""
-            hint_str = (
-                f"\nSource DB study_type hint: {study_type_hint}"
-                if study_type_hint
-                else ""
-            )
-            # pub_types from PubMed metadata is authoritative for study design.
-            # Pass it explicitly so the Agent uses it instead of guessing from text.
-            pub_types = getattr(e, "pub_types", None) or []
-            pub_types_str = (
-                f"\nPubMed pub_types (authoritative): {', '.join(pub_types)}"
-                if pub_types
-                else ""
-            )
+            passages_text = "\n".join(
+                f"  [{j+1}] Section: {p.section} (score: {p.score:.2f})\n      \"{p.snippet}\""
+                for j, p in enumerate(e.supporting_passages)
+            ) or "  （无 passages）"
+
+            # Pre-computed metadata from frontmatter (authoritative when present)
+            pre_computed = []
+            if e.study_type:
+                pre_computed.append(f"study_type (pre-computed): {e.study_type}")
+            if e.grade_level:
+                pre_computed.append(f"grade_level (pre-computed, DO NOT re-derive): {e.grade_level}")
+            if e.rob_overall:
+                pre_computed.append(f"rob_overall (pre-computed, DO NOT re-derive): {e.rob_overall}")
+            pre_str = "\n".join(pre_computed) if pre_computed else "（无预计算字段，请从 passages 推断）"
+
             parts.append(
                 f"Evidence {i + 1}:\n"
                 f"Title: {e.title}\n"
                 f"Source: {e.source}\n"
-                f"PMID: {e.pmid}{hint_str}{pub_types_str}\n"
-                f"Abstract: {abstract}"
+                f"Evidence ID: {e.evidence_id or 'unknown'}\n"
+                f"Year: {e.year or 'unknown'} | Language: {e.language or 'unknown'}\n"
+                f"Tags: {', '.join(e.tags) if e.tags else 'none'}\n"
+                f"Pre-computed fields:\n{pre_str}\n"
+                f"Supporting passages:\n{passages_text}"
             )
         return "\n\n".join(parts)
 
@@ -315,16 +318,40 @@ class AppraiseAgent(BaseAgent):
         graded_evidence = []
 
         for i, evidence in enumerate(evidence_list):
-            # Match by index (LLM outputs in same order as input)
             appraisal = study_appraisals[i] if i < len(study_appraisals) else {}
 
             study_type = appraisal.get("study_type", "CASE_REPORT")
-            computed_grade = _compute_grade(appraisal)
 
-            # Set grade and sync study_type on the Evidence object
-            # (overrides acquire_agent keyword-inferred label with Appraise LLM classification)
+            # If pre-computed grade/rob are available from frontmatter metadata,
+            # use them directly instead of LLM-derived values.
+            if evidence.grade_level and evidence.rob_overall:
+                # Map pre-computed grade string to our internal label
+                _GRADE_STR_MAP = {
+                    "high": "High", "moderate": "Moderate",
+                    "low": "Low", "very_low": "Very Low",
+                }
+                computed_grade = _GRADE_STR_MAP.get(
+                    evidence.grade_level.lower(), evidence.grade_level
+                )
+                # GRADE standard: only "high" RoB (serious bias confirmed) warrants
+                # downgrade.  "some_concerns" means possible bias but impact on
+                # conclusion is uncertain — do NOT automatically downgrade.
+                appraisal["risk_of_bias"] = {
+                    "low": "NOT_SERIOUS",
+                    "some_concerns": "NOT_SERIOUS",
+                    "high": "SERIOUS",
+                }.get(evidence.rob_overall.lower(), "NOT_SERIOUS")
+            else:
+                computed_grade = _compute_grade(appraisal)
+
+            # Sync study_type from pre-computed field if available
+            if evidence.study_type:
+                # Already set from RAG client metadata
+                pass
+            else:
+                evidence.study_type = _GRADE_CODE_TO_LABEL.get(study_type, study_type)
+
             evidence.grade_level = computed_grade
-            evidence.study_type = _GRADE_CODE_TO_LABEL.get(study_type, study_type)
             graded_evidence.append(evidence)
 
             # Build rich rationale record for downstream consumers (including Judge)

@@ -44,12 +44,18 @@ Apply 的维度一致性检查是否使用了与 route_type 匹配的框架？
 
 注意：inconsistency=SERIOUS 时 Moderate→Weak 的降强推荐属正确行为，不应标注为不匹配。
 
-EBM原则（基于 evidence_quality）：
-- evidence_quality=High/Moderate + 结果一致 → Strong 合理
-- evidence_quality=Low 或结果不一致 → Weak 合理
-- evidence_quality=Very Low + 结果一致 → Weak 合理（有明确 caveats）
+EBM原则（基于 evidence_quality，严格遵循 GRADE Guyatt et al. 2011）：
+- evidence_quality=High/Moderate + 结果一致 + 效益明显大于害处 → **Strong 合理**
+  - 注意：indirectness（人群不完全匹配、代理结局）影响证据质量，但不单独导致强度降为 Conditional。若采纳证据为 Moderate 且方向一致，Strong 是正确的。
+- evidence_quality=Moderate + 研究间结论冲突（相反方向），或效益与害处真正不确定 → Conditional 合理
+- evidence_quality=Low + 结果一致 → **Conditional 合理**（不是 Weak）
+- evidence_quality=Low + 结果不一致 → Weak 合理
+- evidence_quality=Very Low + 结果一致 → Conditional 合理（附明确不确定性说明）
+- evidence_quality=Very Low + 结果不一致/冲突 → Weak 合理
 - 仅间接证据 → Conditional 合理
 - 仅专家共识/指南 → Consensus-based 合理
+
+注意：人群不完全匹配、样本量有限、随访短、indirectness — 这些写进 caveats，不构成单独降低推荐强度的理由。
 
 - YES：推荐强度与 `evidence_quality` 严格匹配（含上述特殊情况）
 - PARTIAL：有轻微偏差（如 Moderate 证据给 Strong，但结果高度一致且无 inconsistency 问题），临床上可接受
@@ -68,10 +74,10 @@ EBM原则（基于 evidence_quality）：
 - NO：未提及不确定性，或仅说"证据有限"而无来源说明
 
 ## R5. citation_traceable【Major，权重2】
-推荐依据是否有文献溯源（PMID 或标题可追溯）？
-- YES：推荐依据有文献溯源
-- PARTIAL：部分推荐有溯源，部分缺失
-- NO：无任何文献溯源
+推荐文本是否使用 `[evidence_id / section]` 格式对关键结论进行了引用，且引用的 evidence_id 与 section 确实出现在提供的证据列表中？
+- YES：每条事实性结论后均有 `[EV-... / section]` 引用，且 evidence_id + section 均可在证据列表中找到对应 passage
+- PARTIAL：大部分关键结论有引用，但部分缺失；或个别 evidence_id 无法在证据列表中精确匹配
+- NO：完全未使用 `[evidence_id / section]` 引用格式；或大量引用 ID 是 Apply 编造的（不在证据列表内）
 
 ## R6. recommendation_specific【Minor，权重1】
 推荐内容是否足够具体，临床医生可据此执行（含适应症、关键参数等）？

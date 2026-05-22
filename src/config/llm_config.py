@@ -191,6 +191,109 @@ class _LLMClient:
             resp.choices[0].message.content, usage=usage, ttft=None, elapsed=elapsed
         )
 
+    def stream_reasoning(self, prompt, prefix: str = "") -> _LLMResponse:
+        """Stream the LLM response, printing only the Reasoning section live.
+
+        The LLM output format is:
+            **JSON:** ```json {...} ```
+            ---
+            ### Reasoning: ...
+
+        This method scans for a reasoning marker and streams that section to
+        stdout in real time.  The full response (JSON + Reasoning) is returned
+        in _LLMResponse.content so callers can parse JSON from it as usual.
+        """
+        fold_system = os.getenv("EBM_FOLD_SYSTEM_INTO_USER", "1") != "0"
+        if isinstance(prompt, dict) and "system" in prompt and "user" in prompt:
+            if fold_system:
+                messages = [{"role": "user", "content": prompt["system"] + "\n\n" + prompt["user"]}]
+            else:
+                messages = [
+                    {"role": "system", "content": prompt["system"]},
+                    {"role": "user", "content": prompt["user"]},
+                ]
+        elif isinstance(prompt, str):
+            messages = [{"role": "user", "content": prompt}]
+        else:
+            messages = [{"role": "user", "content": str(prompt)}]
+
+        t0 = time.time()
+        ttft = None
+        chunks: list[str] = []
+        usage = None
+        state = "SCAN"
+        scan_buf = ""
+        printed_prefix = False
+        MARKERS = ("### Reasoning:", "**Reasoning:**", "---\n\n### Reasoning")
+        # When printing Reasoning that comes BEFORE the JSON block, stop when we
+        # hit the JSON fence so we don't dump the raw JSON to the console.
+        JSON_FENCE = "**JSON:**"
+
+        stream = _get_client(self._purpose).chat.completions.create(
+            model=self._model,
+            messages=messages,
+            temperature=self._temperature,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        for chunk in stream:
+            if chunk.choices:
+                delta = chunk.choices[0].delta if chunk.choices[0] else None
+                if delta is not None and getattr(delta, "content", None):
+                    token = delta.content
+                    if ttft is None:
+                        ttft = time.time() - t0
+                    chunks.append(token)
+                    if state == "SCAN":
+                        scan_buf += token
+                        for marker in MARKERS:
+                            if marker in scan_buf:
+                                state = "PRINT"
+                                after = scan_buf.split(marker, 1)[1]
+                                if prefix and not printed_prefix:
+                                    print(prefix, end="", flush=True)
+                                    printed_prefix = True
+                                if after:
+                                    print(after, end="", flush=True)
+                                scan_buf = ""
+                                break
+                        else:
+                            if len(scan_buf) > 200:
+                                scan_buf = scan_buf[-100:]
+                    elif state == "PRINT":
+                        if not printed_prefix:
+                            if prefix:
+                                print(prefix, end="", flush=True)
+                            printed_prefix = True
+                        # Stop printing if we hit the JSON block marker
+                        scan_buf += token
+                        if JSON_FENCE in scan_buf:
+                            state = "DONE"
+                            before_json = scan_buf.split(JSON_FENCE, 1)[0]
+                            if before_json.strip():
+                                print(before_json, end="", flush=True)
+                            print()
+                            scan_buf = ""
+                        else:
+                            if len(scan_buf) > len(JSON_FENCE) + 5:
+                                print(scan_buf[:-len(JSON_FENCE)], end="", flush=True)
+                                scan_buf = scan_buf[-len(JSON_FENCE):]
+                    # state == "DONE": silently buffer the rest
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                usage = chunk_usage
+
+        if state == "PRINT" and scan_buf.strip():
+            print(scan_buf, end="", flush=True)
+            print()
+        elif state == "PRINT":
+            print()
+
+        elapsed = time.time() - t0
+        content = "".join(chunks)
+        self._record_telemetry(usage, ttft=ttft, elapsed=elapsed)
+        return _LLMResponse(content, usage=usage, ttft=ttft, elapsed=elapsed)
+
     def _invoke_streaming(self, messages) -> _LLMResponse:
         t0 = time.time()
         ttft = None

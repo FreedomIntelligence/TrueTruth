@@ -1,5 +1,5 @@
 from typing import TypedDict, Optional, List, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -29,22 +29,46 @@ class EBMQuery:
 
 
 @dataclass
+class Passage:
+    """A supporting passage retrieved from a paper.
+
+    Sourced from hypertensiondb /search chunk-level results.  Multiple
+    passages from the same paper are grouped under one Evidence object.
+    """
+
+    section: str        # e.g. "结果/主要结局"
+    snippet: str        # <= 800 chars
+    score: float        # rerank_score from /search
+
+
+@dataclass
 class Evidence:
-    """Single piece of evidence"""
+    """A paper of evidence with its supporting passages.
+
+    Acquire fills evidence_id / title / year / language / tags /
+    supporting_passages / relevance_score from the hypertensiondb /search
+    response.
+
+    Appraise fills study_type / grade_level / rob_overall after appraising
+    the paper.
+    """
 
     title: str
-    source: str
-    pmid: Optional[str]
-    abstract: str
-    relevance_score: float
+    source: str                                       # "hypertensiondb"
+    relevance_score: float                            # = max(passage.score) within paper
+
+    # Filled by Acquire from hypertensiondb /search response:
+    evidence_id: Optional[str] = None                 # e.g. EV-RCT-2026-PENG-001
+    supporting_passages: List[Passage] = field(default_factory=list)
+    language: str = ""                                # zh | en | bilingual
+    tags: List[str] = field(default_factory=list)
+    year: Optional[int] = None
+
+    # Filled by Appraise:
     study_type: Optional[str] = None
-    publication_date: Optional[str] = None
-    grade_level: Optional[str] = None
-    pmcid: Optional[str] = None  # PMC article ID (local DB only)
-    full_text: Optional[str] = None  # Full text (local DB only, not passed to prompts)
-    key_sentences: Optional[str] = None  # Extracted span(s) relevant to query keywords
-    has_full_text: bool = False  # True when full_text field is populated
-    pub_types: Optional[List[str]] = None  # PubMed publication types (e.g. ["Randomized Controlled Trial"])
+    grade_level: Optional[str] = None                 # very_low | low | moderate | high
+    rob_overall: Optional[str] = None                 # low | some_concerns | high
+    publication_date: Optional[str] = None            # legacy; safe to leave None
 
 
 @dataclass
@@ -179,10 +203,13 @@ class WorkflowState(TypedDict):
     remaining_budget: int
     soft_gate_signals: List[str]
     question_type: Optional[str]
-    route_type: Optional[str]  # "direct_answer" | "full_pipeline" | "sub_questions"
-    route_confidence: Optional[float]  # 0.0-1.0 confidence in routing decision
-    direct_answer_output: Optional[Dict[str, Any]]  # populated when route_type == "direct_answer"
-    ebm_query: Optional[EBMQuery]  # structured query replacing/extending pico_query
-    sub_pico_queries: Optional[List[EBMQuery]]  # decomposed sub-questions
-    sub_question_index: Optional[int]  # current sub-question being processed (0-based)
-    sub_question_total: Optional[int]  # total number of sub-questions
+    route_type: Optional[str]
+    route_confidence: Optional[float]
+    direct_answer_output: Optional[Dict[str, Any]]
+    ebm_query: Optional[EBMQuery]
+    sub_pico_queries: Optional[List[EBMQuery]]
+    sub_question_index: Optional[int]
+    sub_question_total: Optional[int]
+    # NEW: hypertension RAG refactor
+    out_of_domain: Optional[bool]       # True when Ask soft-rejected non-hypertension question
+    rag_degraded: Optional[List[str]]   # degradation tags from /search response

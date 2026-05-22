@@ -75,7 +75,7 @@ class Coordinator:
             sub_question_total=None,
         )
 
-    def execute_agent(self, agent_name: str, state: WorkflowState) -> WorkflowState:
+    def execute_agent(self, agent_name: str, state: WorkflowState, on_agent_complete=None) -> WorkflowState:
         """Execute a single agent and update state"""
         agent = self.agents[agent_name]
 
@@ -95,6 +95,13 @@ class Coordinator:
         # Update state with agent outputs
         for key, value in result.items():
             state[key] = value
+
+        # Notify caller immediately after agent output is ready (before Judge)
+        if on_agent_complete is not None:
+            try:
+                on_agent_complete(agent_name, state)
+            except Exception:
+                pass
 
         # Generate observe using Judge LLM
         t0 = time.time()
@@ -230,7 +237,7 @@ class Coordinator:
 
         return state
 
-    def execute_workflow(self, question: str) -> WorkflowState:
+    def execute_workflow(self, question: str, on_stage_complete=None) -> WorkflowState:
         """Execute complete workflow with Judge and Scheduling LLMs"""
         state = self.initialize_state(question)
         workflow_start = time.time()
@@ -241,8 +248,10 @@ class Coordinator:
             if current_step is None:
                 break
 
-            # Execute current agent (includes Judge timing inside execute_agent)
-            state = self.execute_agent(current_step, state)
+            # Execute current agent — on_stage_complete fires inside execute_agent
+            # immediately after agent output is ready (before Judge), so the user
+            # sees Ask results ~12s earlier than waiting for Judge to finish.
+            state = self.execute_agent(current_step, state, on_agent_complete=on_stage_complete)
 
             # ── Direct-answer early exit ────────────────────────────────────────
             # If the Ask agent decided the question can be answered directly from

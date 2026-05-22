@@ -175,17 +175,17 @@ def _appraise_layer1_check(output: Dict) -> Dict:
         study_type = ev.get("study_type")
         if not study_type or study_type not in LEGAL_STUDY_TYPES:
             failures.append(
-                f"study_type missing or illegal: pmid={ev.get('pmid', '?')} study_type={study_type}"
+                f"study_type missing or illegal: evidence_id={ev.get('evidence_id', '?')} study_type={study_type}"
             )
 
         rob = ev.get("risk_of_bias")
         if rob is None:
-            failures.append(f"risk_of_bias missing: pmid={ev.get('pmid', '?')}")
+            failures.append(f"risk_of_bias missing: evidence_id={ev.get('evidence_id', '?')}")
 
         grade = ev.get("grade_level")
         if grade and grade not in LEGAL_GRADES:
             raise SystemError(
-                f"grade_output_in_legal_range FAILED: pmid={ev.get('pmid', '?')} grade={grade}. "
+                f"grade_output_in_legal_range FAILED: evidence_id={ev.get('evidence_id', '?')} grade={grade}. "
                 "Illegal grade value — workflow terminated."
             )
 
@@ -883,19 +883,23 @@ class JudgeLLM:
             evidence_list = raw_output.get("evidence_list", [])
             condensed_evidence = []
             for i, e in enumerate(evidence_list):
+                passages = getattr(e, "supporting_passages", None) or []
                 condensed_evidence.append(
                     {
                         "id": i + 1,
                         "title": e.title if hasattr(e, "title") else str(e),
                         "source": getattr(e, "source", ""),
-                        "pmid": getattr(e, "pmid", ""),
+                        "evidence_id": getattr(e, "evidence_id", None),
                         "study_type": getattr(e, "study_type", "Unknown"),
                         "relevance_score": getattr(e, "relevance_score", 0.0),
-                        # has_full_text and key_sentences let the Judge verify
-                        # key_sentences_present without guessing from other fields.
-                        "has_full_text": getattr(e, "has_full_text", False),
-                        "has_key_sentences": bool(getattr(e, "key_sentences", None)),
-                        "abstract_preview": (getattr(e, "abstract", "") or "")[:200],
+                        "tags": getattr(e, "tags", None) or [],
+                        "language": getattr(e, "language", ""),
+                        "year": getattr(e, "year", None),
+                        "passage_count": len(passages),
+                        "passages_preview": [
+                            {"section": p.section, "snippet": (p.snippet or "")[:200]}
+                            for p in passages[:2]
+                        ],
                     }
                 )
             # Truncate search_query: full Boolean PubMed queries are 500-1000+ chars,
@@ -925,13 +929,15 @@ class JudgeLLM:
                     {
                         "title": e.title,
                         "source": e.source,
-                        "pmid": e.pmid,
+                        "evidence_id": e.evidence_id,
                         "relevance_score": e.relevance_score,
-                        # pub_types is the authoritative study design field used by AppraiseAgent.
-                        # Including it here lets the Judge verify study_type using the same
-                        # source of truth, eliminating abstract-text vs metadata divergence.
-                        "pub_types": getattr(e, "pub_types", None) or [],
-                        "abstract": (getattr(e, "abstract", "") or "")[:300],
+                        "tags": e.tags or [],
+                        "language": e.language,
+                        "year": e.year,
+                        "supporting_passages": [
+                            {"section": p.section, "snippet": (p.snippet or "")[:300], "score": p.score}
+                            for p in (e.supporting_passages or [])
+                        ],
                     }
                     for e in evidence_list
                 ],

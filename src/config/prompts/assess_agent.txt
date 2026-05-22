@@ -33,9 +33,10 @@ Is the recommendation strength consistent with the evidence quality per GRADE pr
 
 ## Dimension 3 — Reasoning Chain
 Are there logical gaps between the evidence cited in the rationale and the final recommendation?
-- `COMPLETE`: Every recommendation point is traceable to cited evidence; no unsupported leaps.
-- `WEAK`: Minor inferential gaps or one unsupported detail, but the overall reasoning is traceable.
-- `BROKEN`: Recommendation contradicts the cited evidence, or key claims have no traceable evidence basis.
+Citation tags in the format `[evidence_id / section]` are the evidence trail — check that they appear in the rationale for factual claims.
+- `COMPLETE`: Every recommendation point is traceable to cited evidence (with citation tags); no unsupported leaps.
+- `WEAK`: Minor inferential gaps, citation tags present but sparse, or one unsupported detail.
+- `BROKEN`: Recommendation contradicts the cited evidence, key claims have no citation tags, or citation IDs appear fabricated.
 
 ## Dimension 4 — Caveats
 Are important limitations, applicability constraints, and knowledge gaps documented?

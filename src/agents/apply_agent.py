@@ -117,9 +117,15 @@ class ApplyAgent(BaseAgent):
 
         evidence_summary = "\n\n".join(
             [
-                f"Evidence {i+1}:\nTitle: {e.title}\nGRADE: {e.grade_level}\n"
+                f"Evidence {i+1} [{e.evidence_id or 'unknown'}]:\n"
+                f"Title: {e.title}\n"
+                f"GRADE: {e.grade_level or 'unknown'}\n"
                 f"Study Type: {e.study_type or 'Unknown'}\n"
-                f"Key Findings:\n{e.key_sentences or e.abstract or '（无摘要）'}"
+                f"Year: {e.year or 'unknown'} | Language: {e.language or 'unknown'}\n"
+                f"Supporting passages:\n" + "\n".join(
+                    f"  [{j+1}] [{e.evidence_id or 'unknown'} / {p.section}]\n      \"{p.snippet}\""
+                    for j, p in enumerate(e.supporting_passages)
+                )
                 for i, e in enumerate(appraisal.evidence)
             ]
         )
@@ -155,7 +161,7 @@ class ApplyAgent(BaseAgent):
             backtrack_context=backtrack_context,
         )
 
-        response = self.llm.invoke(prompt)
+        response = self.llm.stream_reasoning(prompt, prefix="\n[Apply reasoning] ")
         try:
             rec_dict = self._parse_json(response.content)
         except ValueError:

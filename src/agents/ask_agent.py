@@ -144,6 +144,16 @@ class AskAgent(BaseAgent):
         self._last_router_payload = self._call_unified_router(question, backtrack_context)
         route_result = self._last_router_payload
 
+        # ── Step 0: Hypertension domain filter ────────────────────────────
+        hypertension_related = route_result.get("hypertension_related", True)
+        domain_rationale = route_result.get("domain_rationale", "")
+        if not hypertension_related:
+            logger.info("AskAgent: out-of-domain rejection: %s", domain_rationale)
+            return self._handle_out_of_domain(
+                question=question,
+                domain_rationale=domain_rationale,
+            )
+
         route_type = route_result.get("route_type", "full_pipeline")
         if route_type not in _VALID_ROUTE_TYPES:
             logger.warning("Unknown route_type '%s', defaulting to full_pipeline", route_type)
@@ -200,13 +210,14 @@ class AskAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def _call_unified_router(self, question: str, backtrack_context: str) -> dict:
-        """Call the unified router prompt. Returns parsed JSON with routing
-        decision and (for non-Diagnosis full_pipeline) a `query` sub-object."""
+        """Call the unified router prompt. Streams the Reasoning section live to
+        the console so the user sees the routing rationale immediately, then
+        returns the parsed JSON payload."""
         prompt = self._prompts["router_unified"].format(
             question=question,
             backtrack_context=backtrack_context,
         )
-        response = self.llm.invoke(prompt)
+        response = self.llm.stream_reasoning(prompt, prefix="\n[Ask reasoning] ")
         try:
             return robust_parse_json(response.content)
         except ValueError as exc:
@@ -217,6 +228,30 @@ class AskAgent(BaseAgent):
     # ------------------------------------------------------------------
     # Route handlers
     # ------------------------------------------------------------------
+
+    def _handle_out_of_domain(self, question: str, domain_rationale: str) -> Dict[str, Any]:
+        """Return a soft-rejection direct answer for non-hypertension questions."""
+        if domain_rationale:
+            body = (
+                f"本系统专注于高血压相关的循证医学问题。您的问题主要涉及"
+                f"**{domain_rationale}**，不在覆盖范围内。建议改问与高血压相关的方面。"
+            )
+        else:
+            body = (
+                "本系统专注于高血压相关的循证医学问题。"
+                "您的问题不属于高血压领域，建议改问与高血压相关的方面。"
+            )
+        return {
+            "route_type": "direct_answer",
+            "route_confidence": 1.0,
+            "question_type": "Background",
+            "direct_answer_output": {
+                "answer": body,
+                "requires_pipeline": False,
+            },
+            "should_terminate": True,
+            "out_of_domain": True,
+        }
 
     def _handle_direct_answer(
         self,
