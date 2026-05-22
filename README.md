@@ -40,6 +40,8 @@ TrueTruth将一段普通的临床问题文本全自动转化为**经过分级的
 
 ### 工作流程
 
+![EBM 5A 架构图](ebm5a.png)
+
 ```
 临床问题
    │
@@ -246,6 +248,7 @@ git commit -m "feat: 简述改动"
 | 故障排查 | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | 术语表（GRADE / PICO / 推荐强度） | [docs/glossary.md](docs/glossary.md) |
 | 架构设计 | [docs/architecture.md](docs/architecture.md) |
+| Hypertension RAG 服务启动 | [docs/hypertension-rag-setup.md](docs/hypertension-rag-setup.md) |
 | 快速开始详细版 | [QUICKSTART.md](QUICKSTART.md) |
 | 变更记录 | [CHANGELOG.md](CHANGELOG.md) |
 
