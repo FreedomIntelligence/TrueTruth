@@ -3,7 +3,7 @@
 Endpoints:
   POST /api/sessions          Register a question, get session_id
   GET  /api/run?session_id=X  SSE stream of workflow progress events
-  GET  /api/health            Health check
+  GET  /api/health            Health check (includes service status)
 """
 
 import asyncio
@@ -11,7 +11,9 @@ import threading
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request
@@ -24,14 +26,27 @@ from src.main import create_workflow
 from web.backend.instrumented_coordinator import InstrumentedCoordinator
 from web.backend.event_types import SSEEvent, EventType
 from web.backend import log_capture as _lc
+from web.backend.service_check import ensure_services
 
 import os
 
 _PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
+_HYPERTENSION_DIR = Path(_PROJECT_ROOT) / "hypertension"
 
-app = FastAPI(title="TrueTruth Clinical Decision Support", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    loop = asyncio.get_event_loop()
+    status = await loop.run_in_executor(None, ensure_services, _HYPERTENSION_DIR)
+    app.state.service_status = status
+    for msg in status.messages:
+        print(f"[SERVICE-CHECK] {msg}")
+    yield
+
+
+app = FastAPI(title="TrueTruth Clinical Decision Support", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,7 +78,16 @@ class SessionRequest(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    svc = getattr(app.state, "service_status", None)
+    return {
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": {
+            "docker": svc.docker,
+            "qdrant": svc.qdrant,
+            "hypertensiondb": svc.hypertensiondb,
+        } if svc else None,
+    }
 
 
 @app.post("/api/sessions")

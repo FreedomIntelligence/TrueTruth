@@ -1,0 +1,104 @@
+<h2>网页输出布局方向</h2>
+<p class="subtitle">三种重设计思路 — 哪个最符合你想要的"DeepSeek 感"？</p>
+
+<div class="cards" style="grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f1117; padding:12px; font-family:monospace; font-size:11px; line-height:1.5; border-radius:6px;">
+      <div style="color:#64748b; font-size:10px; margin-bottom:8px;">用户提问</div>
+      <div style="background:#1a1d27; border-radius:8px; padding:8px; color:#e2e8f0; font-size:11px; margin-bottom:10px;">妊娠期高血压降压治疗的目标血压是多少？</div>
+
+      <div style="border:1px solid #f97316; border-radius:6px; padding:8px; margin-bottom:8px;">
+        <div style="color:#f97316; font-size:10px; font-weight:700; margin-bottom:4px;">▶ 思考中... <span style="color:#64748b; font-weight:400;">(已用时 23s)</span></div>
+        <div style="color:#64748b; font-size:10px; line-height:1.5;">✓ Ask：解析 PICO<br>✓ Acquire：找到 6 篇文献<br>✓ Appraise：GRADE 评价完成<br>⏳ Apply：生成推荐...</div>
+      </div>
+
+      <div style="color:#e2e8f0; font-size:11px; line-height:1.7;">
+        对于妊娠期高血压患者，目标收缩压建议控制在
+        <span style="color:#3b82f6;">130–155 mmHg</span>，舒张压控制在
+        <span style="color:#3b82f6;">80–105 mmHg</span>。<span style="display:inline-block; width:2px; height:12px; background:#3b82f6; animation:none; vertical-align:middle; margin-left:1px;">▌</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Chat 模式（DeepSeek 风格）</h3>
+      <p>单栏对话布局，pipeline 折叠为"思考"卡片，最终答案在下方逐字流出。阶段细节默认收起，专注于最终答案。</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f1117; padding:12px; font-family:monospace; font-size:10px; line-height:1.4; border-radius:6px;">
+      <div style="display:flex; gap:4px; margin-bottom:8px;">
+        <div style="flex:1; background:#1a2740; border:1px solid #3b82f6; border-radius:4px; padding:4px; color:#93c5fd; font-size:9px; text-align:center;">Ask ✓</div>
+        <div style="flex:1; background:#1a2740; border-radius:4px; padding:4px; color:#64748b; font-size:9px; text-align:center;">Acquire ✓</div>
+        <div style="flex:1; background:#1a2740; border-radius:4px; padding:4px; color:#64748b; font-size:9px; text-align:center;">Appraise ✓</div>
+        <div style="flex:1; background:#1e1408; border:1px solid #f97316; border-radius:4px; padding:4px; color:#f97316; font-size:9px; text-align:center;">Apply ⏳</div>
+        <div style="flex:1; background:#1a1d27; border-radius:4px; padding:4px; color:#475569; font-size:9px; text-align:center;">Assess</div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 100px; gap:6px; margin-bottom:6px;">
+        <div style="background:#1a1d27; border-radius:4px; padding:6px; color:#64748b; font-size:9px; height:50px;">Stage Card: Apply 阶段输出...</div>
+        <div style="background:#0a0c10; border-radius:4px; padding:6px; color:#64748b; font-size:9px; height:50px;">Log Console</div>
+      </div>
+      <div style="background:#1a2e1a; border:1px solid #22c55e; border-radius:6px; padding:8px;">
+        <div style="color:#86efac; font-size:9px; font-weight:700; margin-bottom:4px;">🎯 临床推荐</div>
+        <div style="color:#e2e8f0; font-size:10px; line-height:1.6;">收缩压目标 130–155 mmHg，舒张压 80–105 mmHg。推荐首选拉贝洛尔或硝苯地平...<span style="display:inline-block; width:2px; height:10px; background:#22c55e; vertical-align:middle; margin-left:1px;">▌</span></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 仪表盘增强版</h3>
+      <p>保留现有 pipeline 顶部 + StageCard/LogConsole 布局，仅在底部最终推荐区域加入逐字流式效果。改动最小，兼顾工程视角。</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f1117; padding:12px; font-family:monospace; font-size:10px; line-height:1.4; border-radius:6px;">
+      <div style="display:grid; grid-template-columns:130px 1fr; gap:8px; height:130px;">
+        <div style="background:#1a1d27; border-radius:4px; padding:6px;">
+          <div style="color:#64748b; font-size:8px; font-weight:700; margin-bottom:4px;">PIPELINE</div>
+          <div style="display:flex; flex-direction:column; gap:3px;">
+            <div style="background:#1a3a2a; color:#86efac; font-size:8px; padding:2px 4px; border-radius:2px;">✓ Ask</div>
+            <div style="background:#1a3a2a; color:#86efac; font-size:8px; padding:2px 4px; border-radius:2px;">✓ Acquire</div>
+            <div style="background:#1a3a2a; color:#86efac; font-size:8px; padding:2px 4px; border-radius:2px;">✓ Appraise</div>
+            <div style="background:#1e1408; color:#f97316; font-size:8px; padding:2px 4px; border-radius:2px;">⏳ Apply</div>
+            <div style="background:#242736; color:#475569; font-size:8px; padding:2px 4px; border-radius:2px;">· Assess</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="background:#1a1d27; border-radius:4px; padding:6px; flex:1; color:#64748b; font-size:9px;">
+            <div style="color:#94a3b8; font-weight:700; margin-bottom:3px;">当前阶段详情</div>
+            Apply agent 正在综合 6 篇证据...
+          </div>
+          <div style="background:#0d1b2a; border:1px solid #1d4ed8; border-radius:6px; padding:8px; flex:1.5;">
+            <div style="color:#60a5fa; font-size:8px; font-weight:700; margin-bottom:3px;">💬 答案正在生成</div>
+            <div style="color:#e2e8f0; font-size:9px; line-height:1.5;">收缩压 130–155 mmHg，舒张压 80–105 mmHg<span style="display:inline-block; width:2px; height:9px; background:#3b82f6; vertical-align:middle; margin-left:1px;">▌</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 双栏混合版</h3>
+      <p>左侧保留 pipeline 进度面板（可折叠），右侧主区域变为实时流式答案。两者并存，研究者能看过程，临床用户聚焦答案。</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:16px; background:#1a1d27; border-radius:8px; padding:14px; border:1px solid #2e3348;">
+  <div class="label" style="margin-bottom:8px;">关于"流式输出"的说明</div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:12px; color:#94a3b8;">
+    <div>
+      <strong style="color:#e2e8f0;">后端已支持的能力：</strong><br>
+      · LLM 已有 <code>stream_reasoning()</code> 方法（流式 token）<br>
+      · SSE 长连接已在运行（每个 stage 事件）<br>
+      · stdout 捕获 → AGENT_LOG 事件
+    </div>
+    <div>
+      <strong style="color:#e2e8f0;">需要新增的：</strong><br>
+      · 新 SSE 事件类型 <code>AGENT_TOKEN</code><br>
+      · Apply agent 调用流式 LLM 并 forward tokens<br>
+      · 前端接收 token → 渐进显示
+    </div>
+  </div>
+</div>

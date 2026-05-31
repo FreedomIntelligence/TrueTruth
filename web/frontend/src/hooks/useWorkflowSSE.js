@@ -6,6 +6,7 @@ const SSE_EVENTS = [
   'agent_completed', 'judge_completed', 'scheduling_decided',
   'backtrack_occurred', 'fastpath_triggered',
   'workflow_completed', 'workflow_error', 'heartbeat',
+  'rec_text_token', 'direct_answer_token',
 ]
 
 export function useWorkflowSSE() {

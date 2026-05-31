@@ -17,7 +17,9 @@ class EventType(str, Enum):
     BACKTRACK_OCCURRED = "backtrack_occurred"
     WORKFLOW_COMPLETED = "workflow_completed"
     WORKFLOW_ERROR = "workflow_error"
-    HEARTBEAT = "heartbeat"
+    HEARTBEAT           = "heartbeat"
+    REC_TEXT_TOKEN      = "rec_text_token"
+    DIRECT_ANSWER_TOKEN = "direct_answer_token"
 
 
 class SSEEvent(BaseModel):

@@ -78,6 +78,36 @@ _CONFIDENCE_SCORES: Dict[str, float] = {
     "VERY_LOW": 0.15,
 }
 
+_SAFETY_KEYWORDS = frozenset({
+    "adverse", "安全", "不良反应", "side effect", "safety",
+    "耐受", "tolerability", "咳嗽", "cough", "水肿",
+})
+_EFFICACY_KEYWORDS = frozenset({
+    "efficacy", "有效", "疗效", "outcome", "mortality",
+    "降压", "心血管事件", "blood pressure", "cardiovascular",
+})
+
+
+def _derive_evidence_role(indirectness: str, indirectness_source: str, rationale: str) -> str:
+    """Derive evidence role from Appraise indirectness + source dimension.
+
+    Roles:
+      core_direct         — PICO fully matches (head-to-head, same population)
+      core_direct_limited — drug comparison is direct but population differs
+      supportive_indirect — intervention/comparator/outcome mismatch
+      safety_only         — only addresses safety, not efficacy
+    """
+    rationale_l = rationale.lower()
+    has_safety = any(k in rationale_l for k in _SAFETY_KEYWORDS)
+    has_efficacy = any(k in rationale_l for k in _EFFICACY_KEYWORDS)
+    if has_safety and not has_efficacy:
+        return "safety_only"
+    if indirectness in ("SERIOUS", "VERY_SERIOUS"):
+        if indirectness == "SERIOUS" and indirectness_source == "population":
+            return "core_direct_limited"
+        return "supportive_indirect"
+    return "core_direct"
+
 
 def _compute_grade(appraisal: Dict) -> str:
     """
@@ -178,10 +208,17 @@ class AppraiseAgent(BaseAgent):
             # Pre-computed metadata from frontmatter (authoritative when present)
             pre_computed = []
             if e.study_type:
-                pre_computed.append(f"study_type (pre-computed): {e.study_type}")
-            if e.grade_level:
+                # Full-text Methods extraction is more reliable than passage snippets.
+                # Pass as authoritative so the LLM does not re-classify from the
+                # Evidence ID prefix (EV-META-*, EV-RCT-*, etc.).
+                pre_computed.append(
+                    f"study_type (pre-computed from full-text Methods extraction, "
+                    f"authoritative — output this value exactly, do not re-classify "
+                    f"from Evidence ID prefix or passage content): {e.study_type}"
+                )
+            if e.grade_level and e.grade_level != "not_assessed":
                 pre_computed.append(f"grade_level (pre-computed, DO NOT re-derive): {e.grade_level}")
-            if e.rob_overall:
+            if e.rob_overall and e.rob_overall != "not_assessed":
                 pre_computed.append(f"rob_overall (pre-computed, DO NOT re-derive): {e.rob_overall}")
             pre_str = "\n".join(pre_computed) if pre_computed else "（无预计算字段，请从 passages 推断）"
 
@@ -197,10 +234,11 @@ class AppraiseAgent(BaseAgent):
             )
         return "\n\n".join(parts)
 
-    def _appraise_batch(self, evidence_subset: list, backtrack_context: str) -> dict:
+    def _appraise_batch(self, evidence_subset: list, backtrack_context: str, target_pico: str) -> dict:
         """Appraise a subset of evidence articles using the standard prompt."""
         evidence_text = self._format_evidence_list(evidence_subset)
         prompt = self.prompt_template.format(
+            target_pico=target_pico,
             evidence_list=evidence_text,
             backtrack_context=backtrack_context,
         )
@@ -277,6 +315,26 @@ class AppraiseAgent(BaseAgent):
                 "bias_inconsistency": False,
             }
 
+        # Build target PICO string for indirectness assessment
+        ebm_query = state.get("ebm_query")
+        pico_query = state.get("pico_query")
+        if ebm_query:
+            target_pico = (
+                f"P: {ebm_query.patient}; "
+                f"I/E: {ebm_query.primary_focus}; "
+                f"C: {ebm_query.comparator or 'N/A'}; "
+                f"O: {ebm_query.outcome}"
+            )
+        elif pico_query:
+            target_pico = (
+                f"P: {pico_query.patient}; "
+                f"I: {pico_query.intervention}; "
+                f"C: {pico_query.comparison}; "
+                f"O: {pico_query.outcome}"
+            )
+        else:
+            target_pico = state.get("original_question", "未提供")
+
         backtrack_context = ""
         if state.get("backtrack_reason"):
             backtrack_context = (
@@ -298,7 +356,7 @@ class AppraiseAgent(BaseAgent):
             t0 = time.time()
             with ThreadPoolExecutor(max_workers=len(batches)) as executor:
                 futures = [
-                    executor.submit(self._appraise_batch, batch, backtrack_context)
+                    executor.submit(self._appraise_batch, batch, backtrack_context, target_pico)
                     for batch in batches
                 ]
                 batch_results = [f.result() for f in futures]
@@ -311,7 +369,7 @@ class AppraiseAgent(BaseAgent):
             print(f"[PARALLEL-APPRAISE] {len(batches)} batches completed in parallel.")
         else:
             # Single batch (≤5 articles): no need for parallel overhead
-            appraisal_dict = self._appraise_batch(evidence_list, backtrack_context)
+            appraisal_dict = self._appraise_batch(evidence_list, backtrack_context, target_pico)
 
         study_appraisals = appraisal_dict.get("study_appraisals", [])
         grade_rationales: List[Dict] = []
@@ -321,10 +379,17 @@ class AppraiseAgent(BaseAgent):
             appraisal = study_appraisals[i] if i < len(study_appraisals) else {}
 
             study_type = appraisal.get("study_type", "CASE_REPORT")
+            # Pre-computed study_type (from full-text Methods extraction) is the
+            # authoritative source. Override the LLM's output so GRADE calculation
+            # uses the correct type even if the LLM was misled by the Evidence ID.
+            if evidence.study_type:
+                study_type = evidence.study_type
+                appraisal["study_type"] = study_type
 
             # If pre-computed grade/rob are available from frontmatter metadata,
             # use them directly instead of LLM-derived values.
-            if evidence.grade_level and evidence.rob_overall:
+            if (evidence.grade_level and evidence.grade_level != "not_assessed"
+                    and evidence.rob_overall and evidence.rob_overall != "not_assessed"):
                 # Map pre-computed grade string to our internal label
                 _GRADE_STR_MAP = {
                     "high": "High", "moderate": "Moderate",
@@ -354,6 +419,12 @@ class AppraiseAgent(BaseAgent):
             evidence.grade_level = computed_grade
             graded_evidence.append(evidence)
 
+            # Derive evidence role from indirectness classification + source dimension
+            indirectness_val = appraisal.get("indirectness", "NOT_SERIOUS")
+            indirectness_src = appraisal.get("indirectness_source", "NA")
+            rationale_text = appraisal.get("rationale", "")
+            evidence.evidence_role = _derive_evidence_role(indirectness_val, indirectness_src, rationale_text)
+
             # Build rich rationale record for downstream consumers (including Judge)
             initial_grade = _POINTS_TO_GRADE.get(
                 _INITIAL_POINTS.get(study_type, 1), "Very Low"
@@ -368,6 +439,7 @@ class AppraiseAgent(BaseAgent):
                     "risk_of_bias": appraisal.get("risk_of_bias", "NOT_SERIOUS"),
                     "inconsistency": appraisal.get("inconsistency", "NA"),
                     "indirectness": appraisal.get("indirectness", "NOT_SERIOUS"),
+                    "indirectness_source": appraisal.get("indirectness_source", "NA"),
                     "imprecision": appraisal.get("imprecision", "NOT_SERIOUS"),
                     "publication_bias": appraisal.get("publication_bias", "UNDETECTED"),
                     "large_effect": appraisal.get("large_effect", "NA"),
@@ -379,6 +451,7 @@ class AppraiseAgent(BaseAgent):
                     ),
                     "computed_grade": computed_grade,
                     "rationale": appraisal.get("rationale", ""),
+                    "evidence_role": evidence.evidence_role,
                 }
             )
 

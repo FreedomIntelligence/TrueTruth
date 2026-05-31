@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from src.agents.base import BaseAgent, robust_parse_json
-from src.state.schema import WorkflowState, Recommendation, EBMQuery, PICOQuery
+from src.state.schema import WorkflowState, Recommendation, EBMQuery, PICOQuery, OutcomeCoverage, GapSearch
 
 
 def _format_ebm_query(ebm_query: EBMQuery) -> str:
@@ -49,9 +49,16 @@ def _summarize_downgrade_factors(grade_rationales: List[Dict]) -> Dict[str, Any]
       - key_downgrade_factors: human-readable string listing the most common issues
       - has_serious_inconsistency: bool — True when any study has inconsistency
         rated SERIOUS or VERY_SERIOUS
+      - has_core_direct: bool — True when at least one study has evidence_role == core_direct
+      - directness_summary: human-readable string summarising evidence role distribution
     """
     factor_counts: Dict[str, int] = {}
     has_serious_inconsistency = False
+    has_core_direct = False
+    core_direct_count = 0
+    core_direct_limited_count = 0
+    indirect_count = 0
+    safety_only_count = 0
 
     for r in grade_rationales:
         for factor in ("risk_of_bias", "inconsistency", "indirectness", "imprecision"):
@@ -62,6 +69,16 @@ def _summarize_downgrade_factors(grade_rationales: List[Dict]) -> Dict[str, Any]
             has_serious_inconsistency = True
         if r.get("publication_bias") == "SUSPECTED":
             factor_counts["publication_bias"] = factor_counts.get("publication_bias", 0) + 1
+        role = r.get("evidence_role")
+        if role == "core_direct":
+            has_core_direct = True
+            core_direct_count += 1
+        elif role == "core_direct_limited":
+            core_direct_limited_count += 1
+        elif role == "safety_only":
+            safety_only_count += 1
+        else:
+            indirect_count += 1
 
     if not factor_counts:
         key_downgrade_factors = "无主要降级因素"
@@ -78,9 +95,16 @@ def _summarize_downgrade_factors(grade_rationales: List[Dict]) -> Dict[str, Any]
         ]
         key_downgrade_factors = "、".join(parts)
 
+    directness_summary = (
+        f"直接证据{core_direct_count}篇、直接但人群有限{core_direct_limited_count}篇、"
+        f"间接证据{indirect_count}篇、仅安全性{safety_only_count}篇"
+    )
+
     return {
         "key_downgrade_factors": key_downgrade_factors,
         "has_serious_inconsistency": has_serious_inconsistency,
+        "has_core_direct": has_core_direct,
+        "directness_summary": directness_summary,
     }
 
 
@@ -115,12 +139,30 @@ class ApplyAgent(BaseAgent):
         if state.get("backtrack_reason"):
             backtrack_context = f"Previous attempt failed: {state['backtrack_reason']}\nPlease address these issues in your recommendation."
 
+        # --- Summarise downgrade factors from grade_rationales ---
+        grade_rationales: List[Dict] = state.get("grade_rationales") or []
+        downgrade_summary = _summarize_downgrade_factors(grade_rationales)
+        key_downgrade_factors = downgrade_summary["key_downgrade_factors"]
+        has_serious_inconsistency = downgrade_summary["has_serious_inconsistency"]
+        has_core_direct = downgrade_summary["has_core_direct"]
+        directness_summary = downgrade_summary["directness_summary"]
+
+        # Build per-evidence role/indirectness lookup from grade_rationales
+        role_lookup: Dict[int, Dict[str, str]] = {}
+        for idx, gr in enumerate(grade_rationales):
+            role_lookup[idx] = {
+                "evidence_role": gr.get("evidence_role", "supportive_indirect"),
+                "indirectness": gr.get("indirectness", "NOT_SERIOUS"),
+            }
+
         evidence_summary = "\n\n".join(
             [
                 f"Evidence {i+1} [{e.evidence_id or 'unknown'}]:\n"
                 f"Title: {e.title}\n"
                 f"GRADE: {e.grade_level or 'unknown'}\n"
                 f"Study Type: {e.study_type or 'Unknown'}\n"
+                f"Evidence Role: {role_lookup.get(i, {}).get('evidence_role', 'unknown')}\n"
+                f"Indirectness: {role_lookup.get(i, {}).get('indirectness', 'unknown')}\n"
                 f"Year: {e.year or 'unknown'} | Language: {e.language or 'unknown'}\n"
                 f"Supporting passages:\n" + "\n".join(
                     f"  [{j+1}] [{e.evidence_id or 'unknown'} / {p.section}]\n      \"{p.snippet}\""
@@ -140,12 +182,6 @@ class ApplyAgent(BaseAgent):
         else:
             query_description = question
 
-        # --- Summarise downgrade factors from grade_rationales ---
-        grade_rationales: List[Dict] = state.get("grade_rationales") or []
-        downgrade_summary = _summarize_downgrade_factors(grade_rationales)
-        key_downgrade_factors = downgrade_summary["key_downgrade_factors"]
-        has_serious_inconsistency = downgrade_summary["has_serious_inconsistency"]
-
         # --- Route type context ---
         route_type = state.get("route_type") or "full_pipeline"
         route_confidence: Optional[float] = state.get("route_confidence")
@@ -158,6 +194,8 @@ class ApplyAgent(BaseAgent):
             appraisal_summary=appraisal.summary,
             key_downgrade_factors=key_downgrade_factors,
             has_serious_inconsistency="YES" if has_serious_inconsistency else "NO",
+            has_core_direct="YES" if has_core_direct else "NO",
+            directness_summary=directness_summary,
             backtrack_context=backtrack_context,
         )
 
@@ -217,6 +255,36 @@ class ApplyAgent(BaseAgent):
             rationale=rec_dict["rationale"],
             caveats=caveats,
             evidence_quality=evidence_quality,
+            has_core_direct=has_core_direct,
         )
 
-        return {"recommendation": recommendation}
+        result: Dict[str, Any] = {"recommendation": recommendation}
+
+        # Parse outcome coverage matrix
+        raw_coverage = rec_dict.get("outcome_coverage") or []
+        outcome_coverage = []
+        for oc in raw_coverage:
+            if isinstance(oc, dict) and "outcome" in oc:
+                outcome_coverage.append(OutcomeCoverage(
+                    outcome=oc["outcome"],
+                    status=oc.get("status", "NOT_COVERED"),
+                    evidence_ids=oc.get("evidence_ids") or [],
+                    note=oc.get("note"),
+                ))
+        if outcome_coverage:
+            result["outcome_coverage"] = outcome_coverage
+
+        # Parse gap search suggestions
+        raw_gaps = rec_dict.get("gap_searches") or []
+        gap_searches = []
+        for gs in raw_gaps:
+            if isinstance(gs, dict) and "outcome" in gs:
+                gap_searches.append(GapSearch(
+                    outcome=gs["outcome"],
+                    pubmed_query=gs.get("pubmed_query", ""),
+                    rationale=gs.get("rationale", ""),
+                ))
+        if gap_searches:
+            result["gap_searches"] = gap_searches
+
+        return result

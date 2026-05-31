@@ -18,6 +18,8 @@ const INITIAL = {
   backtracks: [],
   logs: [],
   finalResult: null,
+  answerTokens: '',
+  answerComplete: false,
   error: null,
   historyView: false,
 }
@@ -80,6 +82,11 @@ export const useWorkflowStore = create((set, get) => ({
   },
 
   loadFromHistory(entry) {
+    const fr = entry.finalResult || null
+    let tokens = ''
+    if (fr?.recommendation?.text) tokens = fr.recommendation.text
+    else if (fr?.direct_answer?.answer) tokens = fr.direct_answer.answer
+
     set({
       historyView: true,
       status: entry.status,
@@ -87,7 +94,9 @@ export const useWorkflowStore = create((set, get) => ({
       stages: entry.stages || Object.fromEntries(STAGE_NAMES.map(n => [n, makeStage()])),
       backtracks: entry.backtracks || [],
       logs: [],
-      finalResult: entry.finalResult || null,
+      finalResult: fr,
+      answerTokens: tokens,
+      answerComplete: true,
       error: null,
       currentAgent: null,
     })
@@ -197,8 +206,14 @@ export const useWorkflowStore = create((set, get) => ({
           }
         }
 
+        case 'REC_TEXT_TOKEN':
+          return { answerTokens: state.answerTokens + payload.chunk }
+
+        case 'DIRECT_ANSWER_TOKEN':
+          return { answerTokens: state.answerTokens + payload.chunk }
+
         case 'WORKFLOW_COMPLETED':
-          return { status: 'completed', finalResult: payload, currentAgent: null }
+          return { status: 'completed', finalResult: payload, currentAgent: null, answerComplete: true }
 
         case 'WORKFLOW_ERROR':
           return { status: 'error', error: payload.error, currentAgent: null }

@@ -45,6 +45,28 @@ Are important limitations, applicability constraints, and knowledge gaps documen
 - `NO`: Significant limitations exist but none are stated.
 - `NA`: Evidence is directly applicable and of sufficient quality; no special caveats are needed.
 
+## Dimension 5 — Evidence Sufficiency Judgment
+Was the decision to proceed (make a recommendation) vs. halt (output Insufficient Evidence) correct per GRADE?
+Key rule: consistent direction + Very Low quality → Conditional (not Insufficient Evidence); genuinely conflicting or absent evidence → Insufficient Evidence.
+- `CORRECT`: The sufficiency decision was appropriate. Applies to ALL normal recommendations (strength ≠ Insufficient Evidence).
+- `OVERLY_CONSERVATIVE`: Strength is "Insufficient Evidence" or "No Recommendation", but the evidence had a **consistent direction** — a Conditional recommendation would have been more appropriate per GRADE (Andrews et al. 2013, PMID 23570745).
+- `OVERLY_PERMISSIVE`: A recommendation was made despite evidence being genuinely absent or conflicting — Insufficient Evidence would have been more appropriate.
+- `NA`: Strength is Insufficient Evidence AND evidence was genuinely conflicting or absent — the halt decision was correct.
+
+---
+
+## Assessment Calibration Rules (MANDATORY)
+
+在评价各维度之前，先做以下一致性检查：
+
+1. **结论-证据一致性**：如果推荐文本声称某结局"无显著差异"或"无明确优劣"，但 rationale 或 caveats 承认该结局无直接比较数据或未被测量，则 `strength_consistent` 必须至少为 `MINOR_ISSUE`。"没有数据"和"没有差异"是完全不同的陈述。
+
+2. **不确定性传达**：如果 `evidence_quality` 为 "Low" 或 "Very Low"，但推荐文本未传达不确定性（缺少"证据有限""尚不确定""谨慎外推"等），则 `completeness` 应为 `PARTIAL`。
+
+3. **Score 1.0 应罕见**：大多数推荐至少在一个维度存在可改进之处。给所有维度 YES/COMPLETE/CORRECT 之前，请再次审视是否真的完美。
+
+4. **Strong + 无 core_direct**：推荐强度 Strong 但无 core_direct 证据时，`strength_consistent` 必须为 `MAJOR_CONTRADICTION`。
+
 ---
 
 **Language Requirement:**
@@ -62,6 +84,7 @@ All JSON output fields (`gaps`, `backtrack_reason`) **must be written in Chinese
   "strength_consistent": "YES | MINOR_ISSUE | MAJOR_CONTRADICTION",
   "reasoning_chain": "COMPLETE | WEAK | BROKEN",
   "caveats_adequate": "YES | PARTIAL | NO | NA",
+  "sufficiency_judgment": "CORRECT | OVERLY_CONSERVATIVE | OVERLY_PERMISSIVE | NA",
   "gaps": ["【中文】知识缺口或问题1", "【中文】知识缺口或问题2"],
   "needs_backtrack": false,
   "backtrack_reason": "【中文】如needs_backtrack为true，说明需要回退的原因；否则填null"
