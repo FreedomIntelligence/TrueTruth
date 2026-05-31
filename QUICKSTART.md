@@ -8,8 +8,8 @@
 
 ```bash
 # 1. 克隆并进入项目
-git clone https://github.com/Winda0001/ebm5a.git
-cd ebm5a
+git clone https://github.com/FreedomIntelligence/TrueTruth.git
+cd TrueTruth
 
 # 2. 复制并填写配置文件
 cp .env.example .env
