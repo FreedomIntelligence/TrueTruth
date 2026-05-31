@@ -181,6 +181,7 @@ class _LLMClient:
                 model=self._model,
                 messages=messages,
                 temperature=self._temperature,
+                seed=42,
             ),
             label=f"{self._purpose}/blocking",
         )
@@ -233,6 +234,7 @@ class _LLMClient:
             model=self._model,
             messages=messages,
             temperature=self._temperature,
+            seed=42,
             stream=True,
             stream_options={"include_usage": True},
         )
@@ -303,6 +305,7 @@ class _LLMClient:
             model=self._model,
             messages=messages,
             temperature=self._temperature,
+            seed=42,
             stream=True,
             stream_options={"include_usage": True},
         )

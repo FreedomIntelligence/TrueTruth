@@ -39,6 +39,8 @@ class Passage:
     section: str        # e.g. "结果/主要结局"
     snippet: str        # <= 800 chars
     score: float        # rerank_score from /search
+    filter_label: Optional[str] = None    # RELEVANT / TANGENTIAL / IRRELEVANT (None = unfiltered)
+    filter_reason: Optional[str] = None   # reason string when TANGENTIAL
 
 
 @dataclass
@@ -69,6 +71,7 @@ class Evidence:
     grade_level: Optional[str] = None                 # very_low | low | moderate | high
     rob_overall: Optional[str] = None                 # low | some_concerns | high
     publication_date: Optional[str] = None            # legacy; safe to leave None
+    evidence_role: Optional[str] = None               # core_direct | supportive_indirect | safety_only
 
 
 @dataclass
@@ -90,6 +93,7 @@ class Recommendation:
     rationale: str
     caveats: List[str]
     evidence_quality: str
+    has_core_direct: bool = False
 
 
 @dataclass
@@ -100,6 +104,25 @@ class Assessment:
     gaps: List[str]
     needs_backtrack: bool
     backtrack_reason: Optional[str]
+
+
+@dataclass
+class OutcomeCoverage:
+    """Coverage status for a single PICO outcome across retrieved evidence."""
+
+    outcome: str
+    status: str          # COVERED / PARTIAL / NOT_COVERED
+    evidence_ids: List[str] = field(default_factory=list)
+    note: Optional[str] = None
+
+
+@dataclass
+class GapSearch:
+    """Suggested PubMed search strategy for an uncovered outcome."""
+
+    outcome: str
+    pubmed_query: str
+    rationale: str
 
 
 @dataclass
@@ -213,3 +236,7 @@ class WorkflowState(TypedDict):
     # NEW: hypertension RAG refactor
     out_of_domain: Optional[bool]       # True when Ask soft-rejected non-hypertension question
     rag_degraded: Optional[List[str]]   # degradation tags from /search response
+    # Evidence coverage analysis (Phase 2)
+    outcome_coverage: Optional[List[Any]]   # List[OutcomeCoverage] from Apply
+    gap_searches: Optional[List[Any]]       # List[GapSearch] from Apply
+    passage_filter_stats: Optional[Dict[str, Any]]  # stats from LLM passage filter

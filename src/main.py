@@ -72,13 +72,16 @@ def create_workflow() -> Coordinator:
     """
     _warmup_llms()
 
+    from src.tools.hypertension_rag_client import check_index_health
+    check_index_health()
+
     # Initialize LLM
     llm = get_llm(temperature=0.0, purpose="agent")
 
     # Initialize agents
     agents = {
         "Ask": AskAgent(llm=llm),
-        "Acquire": AcquireAgent(llm=llm),
+        "Acquire": AcquireAgent(llm=llm, fast_llm=get_fast_llm(temperature=0.0, purpose="passage_filter")),
         "Appraise": AppraiseAgent(llm=llm),
         "Apply": ApplyAgent(llm=llm),
         "Assess": AssessAgent(llm=llm),
@@ -159,6 +162,18 @@ def _print_stage_result(stage: str, state: Dict[str, Any]) -> None:
             print(f"[Apply] 推荐生成完成  (strength={rec.strength}, quality={rec.evidence_quality})")
             print(f"  {rec.text[:200]}")
             print(sep)
+        oc_list = state.get("outcome_coverage") or []
+        if oc_list:
+            print(f"[Apply] Outcome 覆盖度:")
+            for oc in oc_list:
+                icon = {"COVERED": "✅", "PARTIAL": "⚠️", "NOT_COVERED": "❌"}.get(oc.status, "?")
+                note = f"  ({oc.note})" if oc.note else ""
+                print(f"  {icon} {oc.outcome}: {oc.status}{note}")
+        gs_list = state.get("gap_searches") or []
+        if gs_list:
+            print(f"[Apply] 建议补充检索:")
+            for gs in gs_list:
+                print(f"  - {gs.outcome}: {gs.pubmed_query}")
 
     elif stage == "Assess":
         assess = state.get("assessment")
@@ -166,6 +181,20 @@ def _print_stage_result(stage: str, state: Dict[str, Any]) -> None:
             print(f"\n{sep}")
             print(f"[Assess] 质量评估完成  score={assess.quality_score:.2f}  backtrack={assess.needs_backtrack}")
             print(sep)
+
+
+def _ensure_rag_services() -> None:
+    """Auto-start Docker → Qdrant → Hypertensiondb if not already running."""
+    from pathlib import Path
+    from web.backend.service_check import ensure_services
+
+    project_root = Path(__file__).resolve().parent.parent
+    hypertension_dir = project_root / "hypertension"
+    status = ensure_services(hypertension_dir)
+    for msg in status.messages:
+        print(f"[SERVICE] {msg}")
+    if not status.hypertensiondb:
+        print("[SERVICE] WARNING: RAG service unavailable — pipeline may fail at Acquire")
 
 
 def run_clinical_question(question: str) -> Dict[str, Any]:
@@ -178,6 +207,7 @@ def run_clinical_question(question: str) -> Dict[str, Any]:
     Returns:
         Final workflow state with recommendation
     """
+    _ensure_rag_services()
     coordinator = create_workflow()
     result = coordinator.execute_workflow(question, on_stage_complete=_print_stage_result)
     return result
@@ -247,6 +277,26 @@ def format_output(state: Dict[str, Any]) -> str:
             output.append("  Identified Gaps:")
             for gap in assess.gaps:
                 output.append(f"    - {gap}")
+        output.append("")
+
+    # Outcome Coverage
+    oc_list = state.get("outcome_coverage") or []
+    if oc_list:
+        output.append("OUTCOME COVERAGE:")
+        for oc in oc_list:
+            icon = {"COVERED": "✅", "PARTIAL": "⚠️", "NOT_COVERED": "❌"}.get(oc.status, "?")
+            note = f" — {oc.note}" if oc.note else ""
+            ids = ", ".join(oc.evidence_ids) if oc.evidence_ids else "none"
+            output.append(f"  {icon} {oc.outcome}: {oc.status} (evidence: {ids}){note}")
+        output.append("")
+
+    # Gap Searches
+    gs_list = state.get("gap_searches") or []
+    if gs_list:
+        output.append("SUGGESTED SUPPLEMENTARY SEARCHES:")
+        for gs in gs_list:
+            output.append(f"  - {gs.outcome}: {gs.pubmed_query}")
+            output.append(f"    Rationale: {gs.rationale}")
         output.append("")
 
     # Observe History

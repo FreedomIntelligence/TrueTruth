@@ -31,6 +31,8 @@ docs/plans/
 docs/superpowers/
 experiments/
 
-# hypertension/ is a separate git repository (its own .git/);
-# kept alongside ebm5a as a sibling sub-project, not as a submodule.
-hypertension/
+# hypertension/ is included as a subdirectory.
+# Qdrant vector data is excluded (pre-built Docker image on Docker Hub).
+hypertension/data/
+hypertension/raw/
+hypertension/.env

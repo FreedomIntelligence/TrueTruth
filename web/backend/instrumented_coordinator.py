@@ -48,6 +48,19 @@ class InstrumentedCoordinator(Coordinator):
     def _ts(self) -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    def _emit_text_stream(self, text: str, event_type: EventType, chunk_size: int = 4) -> None:
+        """Replay text as token-chunk SSE events at ~25 ms cadence.
+
+        Runs in the worker thread. Checks cancel_flag each iteration so
+        a Stop request cleanly aborts mid-replay.
+        """
+        for i in range(0, len(text), chunk_size):
+            if self._cancel.is_set():
+                break
+            chunk = text[i : i + chunk_size]
+            self._emit(event_type, {"chunk": chunk})
+            time.sleep(0.025)
+
     # ------------------------------------------------------------------
     # Overrides
     # ------------------------------------------------------------------
@@ -62,6 +75,19 @@ class InstrumentedCoordinator(Coordinator):
 
         rec = state.get("recommendation")
         assess = state.get("assessment")
+        direct_raw = state.get("direct_answer_output")
+        if isinstance(direct_raw, dict):
+            direct_out = direct_raw
+        elif direct_raw is not None:
+            direct_out = {
+                "answer": getattr(direct_raw, "answer", ""),
+                "answer_basis": getattr(direct_raw, "answer_basis", None),
+                "guideline_source": getattr(direct_raw, "guideline_source", None),
+                "caveats": getattr(direct_raw, "caveats", []) or [],
+            }
+        else:
+            direct_out = None
+
         self._emit(
             EventType.WORKFLOW_COMPLETED,
             {
@@ -74,12 +100,25 @@ class InstrumentedCoordinator(Coordinator):
                 }
                 if rec
                 else None,
+                "direct_answer": direct_out,
                 "assessment": {
                     "quality_score": assess.quality_score,
                     "gaps": assess.gaps,
                 }
                 if assess
                 else None,
+                "outcome_coverage": [
+                    {"outcome": oc.outcome, "status": oc.status,
+                     "evidence_ids": oc.evidence_ids, "note": oc.note}
+                    for oc in (state.get("outcome_coverage") or [])
+                    if hasattr(oc, "outcome")
+                ] or None,
+                "gap_searches": [
+                    {"outcome": gs.outcome, "pubmed_query": gs.pubmed_query,
+                     "rationale": gs.rationale}
+                    for gs in (state.get("gap_searches") or [])
+                    if hasattr(gs, "outcome")
+                ] or None,
                 "stats": {
                     "iteration_count": state["iteration_count"],
                     "agent_call_counts": state["agent_call_counts"],
@@ -91,7 +130,7 @@ class InstrumentedCoordinator(Coordinator):
         )
         return state
 
-    def execute_agent(self, agent_name: str, state: WorkflowState) -> WorkflowState:
+    def execute_agent(self, agent_name: str, state: WorkflowState, on_agent_complete=None) -> WorkflowState:
         if self._cancel.is_set():
             raise RuntimeError("Workflow cancelled by client")
 
@@ -110,8 +149,19 @@ class InstrumentedCoordinator(Coordinator):
         )
 
         t0 = time.time()
-        result_state = super().execute_agent(agent_name, state)
+        result_state = super().execute_agent(agent_name, state, on_agent_complete=on_agent_complete)
         elapsed = round(time.time() - t0, 1)
+
+        # Stream final outputs to the answer area
+        if agent_name == "Ask" and result_state.get("route_type") == "direct_answer":
+            direct = result_state.get("direct_answer_output") or {}
+            answer = direct.get("answer", "") if isinstance(direct, dict) else getattr(direct, "answer", "")
+            if answer:
+                self._emit_text_stream(answer, EventType.DIRECT_ANSWER_TOKEN)
+        elif agent_name == "Apply":
+            rec = result_state.get("recommendation")
+            if rec and getattr(rec, "text", None):
+                self._emit_text_stream(rec.text, EventType.REC_TEXT_TOKEN)
 
         output = serialize_agent_output(agent_name, result_state)
         self._emit(
@@ -137,7 +187,8 @@ class InstrumentedCoordinator(Coordinator):
                         "overall_score": round(ev.overall_score, 3),
                         "pass_threshold": ev.pass_threshold,
                         "dimension_scores": {
-                            k: round(v, 3) for k, v in ev.dimension_scores.items()
+                            k: round(v, 3) if v is not None else None
+                            for k, v in ev.dimension_scores.items()
                         },
                         "issues": [
                             {

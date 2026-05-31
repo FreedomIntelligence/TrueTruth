@@ -1,0 +1,30 @@
+{"id": "Q-001", "query": "ARB联合CCB治疗中重度高血压", "expected_top": ["EV-RCT-2026-PENG-001"]}
+{"id": "Q-002", "query": "缬沙坦氨氯地平联合用药", "expected_top": ["EV-RCT-2026-PENG-001"]}
+{"id": "Q-003", "query": "老年高血压强化降压目标", "expected_top": ["EV-META-2024-LIU-001"]}
+{"id": "Q-004", "query": "elderly intensive blood pressure target", "expected_top": ["EV-META-2024-LIU-001"]}
+{"id": "Q-005", "query": "限盐对血压的影响", "expected_top": ["EV-SR-2025-WANG-001"]}
+{"id": "Q-006", "query": "钠摄入限制降压效果", "expected_top": ["EV-SR-2025-WANG-001"]}
+{"id": "Q-007", "query": "中国高血压指南推荐", "expected_top": ["EV-GL-2024-CHS-001"]}
+{"id": "Q-008", "query": "ESH hypertension management combination therapy", "expected_top": ["EV-GL-2023-ESC-001"]}
+{"id": "Q-009", "query": "天麻钩藤饮治疗高血压", "expected_top": ["EV-TCM-2025-ZHANG-001"]}
+{"id": "Q-010", "query": "肝阳上亢中医高血压", "expected_top": ["EV-TCM-2025-ZHANG-001"]}
+{"id": "Q-011", "query": "糖尿病高血压ACEI ARB选择", "expected_top": ["EV-RCT-2025-CHEN-001"]}
+{"id": "Q-012", "query": "培哚普利缬沙坦对比", "expected_top": ["EV-RCT-2025-CHEN-001"]}
+{"id": "Q-013", "query": "老年高血压起始联合治疗", "expected_top": ["EV-RCT-2024-LI-001", "EV-META-2024-LIU-001"]}
+{"id": "Q-014", "query": "有氧运动降血压", "expected_top": ["EV-META-2026-SUN-001"]}
+{"id": "Q-015", "query": "exercise hypertension blood pressure", "expected_top": ["EV-META-2026-SUN-001"]}
+{"id": "Q-016", "query": "青年高血压beta blocker", "expected_top": ["EV-SR-2024-OUYANG-001"]}
+{"id": "Q-017", "query": "β受体阻滞剂年轻患者", "expected_top": ["EV-SR-2024-OUYANG-001"]}
+{"id": "Q-018", "query": "高血压生活方式干预", "expected_top": ["EV-SR-2025-WANG-001", "EV-META-2026-SUN-001"]}
+{"id": "Q-019", "query": "降压药物一线选择", "expected_top": ["EV-GL-2024-CHS-001", "EV-GL-2023-ESC-001"]}
+{"id": "Q-020", "query": "联合治疗vs单药降压效果", "expected_top": ["EV-RCT-2026-PENG-001", "EV-RCT-2024-LI-001"]}
+{"id": "Q-021", "query": "高质量临床指南推荐", "expected_top": ["EV-GL-2024-CHS-001", "EV-GL-2023-ESC-001"], "filters": {"grade_min": "high", "types": ["GL"]}}
+{"id": "Q-022", "query": "中医辨证治疗高血压", "expected_top": ["EV-TCM-2025-ZHANG-001"], "filters": {"types": ["TCM"]}}
+{"id": "Q-023", "query": "Meta分析降压证据", "expected_top": ["EV-META-2024-LIU-001", "EV-META-2026-SUN-001"], "filters": {"types": ["META"]}}
+{"id": "Q-024", "query": "RCT随机对照试验降压", "expected_top": ["EV-RCT-2026-PENG-001", "EV-RCT-2025-CHEN-001", "EV-RCT-2024-LI-001"], "filters": {"types": ["RCT"]}}
+{"id": "Q-025", "query": "2024年高血压研究", "expected_top": ["EV-META-2024-LIU-001", "EV-RCT-2024-LI-001", "EV-GL-2024-CHS-001", "EV-SR-2024-OUYANG-001"], "filters": {"year_min": 2024, "year_max": 2024}}
+{"id": "Q-026", "query": "英文高血压指南", "expected_top": ["EV-GL-2023-ESC-001"], "filters": {"languages": ["en"]}}
+{"id": "Q-027", "query": "钙通道阻滞剂联合", "expected_top": ["EV-RCT-2026-PENG-001"]}
+{"id": "Q-028", "query": "血压达标率联合用药", "expected_top": ["EV-RCT-2026-PENG-001", "EV-RCT-2024-LI-001"]}
+{"id": "Q-029", "query": "心血管事件预防", "expected_top": ["EV-META-2024-LIU-001", "EV-SR-2024-OUYANG-001"]}
+{"id": "Q-030", "query": "高证据等级Meta分析", "expected_top": ["EV-META-2024-LIU-001", "EV-META-2026-SUN-001"], "filters": {"grade_min": "high"}}

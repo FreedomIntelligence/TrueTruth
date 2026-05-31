@@ -1,5 +1,48 @@
 // Helpers shared across components
 
+const EV_TYPE_ZH = {
+  RCT: 'RCT研究', META: 'Meta分析', SR: '系统综述',
+  COHORT: '队列研究', CASE: '病例报告', GUIDELINE: '指南',
+}
+
+// Build a lookup map from evidence_id → paper entry, given the Acquire evidence_list.
+export function buildEvidenceMap(evidenceList = []) {
+  const map = {}
+  for (const p of evidenceList) {
+    if (p.evidence_id) map[p.evidence_id] = p
+  }
+  return map
+}
+
+// Replace internal "EV-RCT-2008-SALIM-001 [results_1]" citations with readable labels.
+// With evidenceMap: "[Telmisartan, Ramipril… (2008年RCT研究)]"
+// Without map:      "[2008年RCT研究]"
+export function cleanRationale(text, evidenceMap = {}) {
+  if (!text) return text
+
+  const makeLabel = (fullId, type, year) => {
+    const entry = evidenceMap[fullId]
+    const typeName = EV_TYPE_ZH[type] || type
+    if (entry?.title) {
+      const t = entry.title
+      const short = t.length > 32 ? t.slice(0, 31) + '…' : t
+      return `[${short} (${year}年${typeName})]`
+    }
+    return `[${year}年${typeName}]`
+  }
+
+  return text
+    // "[EV-TYPE-YEAR-AUTH-NNN / section]" or "[EV-TYPE-YEAR-AUTH-NNN]"
+    .replace(/\[(EV-([A-Z]+)-(\d{4})-[A-Z0-9]+-\d{3})[^\]]*\]/g,
+      (_, id, t, y) => makeLabel(id, t, y))
+    // "EV-TYPE-YEAR-AUTH-NNN [section]" or bare "EV-TYPE-YEAR-AUTH-NNN"
+    .replace(/(EV-([A-Z]+)-(\d{4})-[A-Z0-9]+-\d{3})(?:\s*\[[^\]]+\])?/g,
+      (_, id, t, y) => makeLabel(id, t, y))
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+
 export function studyTypeBadge(type) {
   if (!type) return <span className="badge badge-other">Unknown</span>
   const t = type.toLowerCase()

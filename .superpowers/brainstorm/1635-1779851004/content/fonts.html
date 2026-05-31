@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+  --border: #30363d; --text: #e6edf3; --text2: #8b949e; --text3: #484f58;
+  --blue: #58a6ff; --green: #3fb950; --orange: #d29922;
+  --green-dim: #1b4332;
+}
+body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; min-height: 100vh; padding: 24px; }
+
+h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+.subtitle { color: var(--text2); font-size: 13px; margin-bottom: 24px; }
+
+.font-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+.font-card {
+  border: 2px solid var(--border); border-radius: 12px; overflow: hidden;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  background: var(--bg2);
+}
+.font-card:hover { border-color: #58a6ff44; }
+.font-card.selected { border-color: var(--blue); box-shadow: 0 0 0 3px #58a6ff22; }
+
+.font-label {
+  padding: 10px 14px; background: var(--bg3); border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text2); display: flex; align-items: center; justify-content: space-between;
+}
+.font-label .letter {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--blue);
+  color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+}
+
+.font-preview { padding: 14px 16px; }
+
+/* Font A: Inter + Noto Sans SC */
+.font-a { font-family: 'Inter', 'Noto Sans SC', -apple-system, sans-serif; }
+
+/* Font B: System */
+.font-b { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', sans-serif; }
+
+/* Font C: Plus Jakarta Sans + Noto Sans SC */
+.font-c { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', -apple-system, sans-serif; }
+
+/* Shared mock UI */
+.mock-question {
+  background: var(--bg3); border-radius: 10px 10px 2px 10px;
+  padding: 10px 14px; font-size: 14px; color: var(--text); margin-bottom: 12px;
+  display: inline-block; max-width: 90%;
+}
+
+.mock-thinking {
+  border: 1px solid #2d4a2d; background: #0d1a0d; border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 12px;
+}
+.mock-thinking-title {
+  font-size: 12px; font-weight: 600; color: var(--green);
+  display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+}
+.mock-stage { font-size: 12px; color: var(--text2); display: flex; gap: 8px; margin-bottom: 4px; }
+.mock-stage-name { color: var(--green); font-weight: 600; width: 60px; flex-shrink: 0; }
+.mock-stage-running { color: var(--orange); }
+.mock-stage-name-r { color: var(--orange); font-weight: 600; width: 60px; flex-shrink: 0; }
+
+.mock-answer {
+  font-size: 14.5px; line-height: 1.85; color: var(--text);
+}
+.mock-answer strong { color: var(--blue); }
+
+.mock-meta {
+  margin-top: 12px; padding: 8px 12px; background: var(--bg3);
+  border-radius: 6px; display: flex; gap: 12px; align-items: center; font-size: 11px;
+}
+.badge-strong { background: #1b4332; color: #3fb950; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+
+.select-indicator {
+  padding: 8px 14px; text-align: center; font-size: 12px; color: var(--blue);
+  border-top: 1px solid var(--border); display: none;
+}
+.font-card.selected .select-indicator { display: block; }
+</style>
+
+<script>
+function selectFont(el) {
+  document.querySelectorAll('.font-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  const choice = el.dataset.choice;
+  const text = el.querySelector('.font-label span')?.textContent || choice;
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: 'select', choice, text }, '*');
+  }
+  try {
+    const events = JSON.parse(localStorage.getItem('vc_events') || '[]');
+    events.push({ type: 'click', choice, text, timestamp: Date.now() });
+    localStorage.setItem('vc_events', JSON.stringify(events));
+  } catch(e) {}
+}
+</script>
+</head>
+<body>
+
+<h2>字体方案选哪个？</h2>
+<p class="subtitle">三种字体组合，都用真实的中英文医学内容渲染，选你觉得最好看的</p>
+
+<div class="font-grid">
+
+  <!-- A: Inter + Noto Sans SC -->
+  <div class="font-card font-a" data-choice="inter-noto" onclick="selectFont(this)">
+    <div class="font-label">
+      <div class="letter">A</div>
+      <span>Inter + Noto Sans SC</span>
+    </div>
+    <div class="font-preview">
+      <div class="mock-question">妊娠期高血压降压治疗目标血压是多少？</div>
+
+      <div class="mock-thinking">
+        <div class="mock-thinking-title">▼ 思考过程 <span style="color:var(--text3); font-weight:400; font-size:11px;">42s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Ask</span><span>PICO 解析完成 · 治疗类 · 3.1s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Acquire</span><span>6 篇 · RCT×3 SR×2 · 9.2s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Appraise</span><span>High×1 Moderate×3 · 21.4s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name-r">⏳ Apply</span><span style="color:var(--text3);">推荐生成中...</span></div>
+      </div>
+
+      <div class="mock-answer">
+        对于妊娠期高血压患者，建议将收缩压控制在 <strong>130–155 mmHg</strong>，舒张压控制在 <strong>80–105 mmHg</strong>。首选口服降压药物为拉贝洛尔（100–200 mg tid）或硝苯地平缓释片（10–20 mg bid）。<span style="border-right:2px solid var(--blue); padding-right:1px; animation:none;"></span>
+      </div>
+
+      <div class="mock-meta">
+        <span class="badge-strong">强推荐</span>
+        <span style="color:var(--text2);">证据质量: 中等</span>
+        <span style="color:var(--green);">质量分 84%</span>
+      </div>
+    </div>
+    <div class="select-indicator">✓ 已选择</div>
+  </div>
+
+  <!-- B: System fonts -->
+  <div class="font-card font-b" data-choice="system" onclick="selectFont(this)">
+    <div class="font-label">
+      <div class="letter">B</div>
+      <span>系统字体（PingFang / YaHei）</span>
+    </div>
+    <div class="font-preview">
+      <div class="mock-question">妊娠期高血压降压治疗目标血压是多少？</div>
+
+      <div class="mock-thinking">
+        <div class="mock-thinking-title">▼ 思考过程 <span style="color:var(--text3); font-weight:400; font-size:11px;">42s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Ask</span><span>PICO 解析完成 · 治疗类 · 3.1s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Acquire</span><span>6 篇 · RCT×3 SR×2 · 9.2s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Appraise</span><span>High×1 Moderate×3 · 21.4s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name-r">⏳ Apply</span><span style="color:var(--text3);">推荐生成中...</span></div>
+      </div>
+
+      <div class="mock-answer">
+        对于妊娠期高血压患者，建议将收缩压控制在 <strong>130–155 mmHg</strong>，舒张压控制在 <strong>80–105 mmHg</strong>。首选口服降压药物为拉贝洛尔（100–200 mg tid）或硝苯地平缓释片（10–20 mg bid）。<span style="border-right:2px solid var(--blue); padding-right:1px;"></span>
+      </div>
+
+      <div class="mock-meta">
+        <span class="badge-strong">强推荐</span>
+        <span style="color:var(--text2);">证据质量: 中等</span>
+        <span style="color:var(--green);">质量分 84%</span>
+      </div>
+    </div>
+    <div class="select-indicator">✓ 已选择</div>
+  </div>
+
+  <!-- C: Plus Jakarta Sans + Noto Sans SC -->
+  <div class="font-card font-c" data-choice="jakarta-noto" onclick="selectFont(this)">
+    <div class="font-label">
+      <div class="letter">C</div>
+      <span>Plus Jakarta Sans + Noto Sans SC</span>
+    </div>
+    <div class="font-preview">
+      <div class="mock-question">妊娠期高血压降压治疗目标血压是多少？</div>
+
+      <div class="mock-thinking">
+        <div class="mock-thinking-title">▼ 思考过程 <span style="color:var(--text3); font-weight:400; font-size:11px;">42s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Ask</span><span>PICO 解析完成 · 治疗类 · 3.1s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Acquire</span><span>6 篇 · RCT×3 SR×2 · 9.2s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name">✓ Appraise</span><span>High×1 Moderate×3 · 21.4s</span></div>
+        <div class="mock-stage"><span class="mock-stage-name-r">⏳ Apply</span><span style="color:var(--text3);">推荐生成中...</span></div>
+      </div>
+
+      <div class="mock-answer">
+        对于妊娠期高血压患者，建议将收缩压控制在 <strong>130–155 mmHg</strong>，舒张压控制在 <strong>80–105 mmHg</strong>。首选口服降压药物为拉贝洛尔（100–200 mg tid）或硝苯地平缓释片（10–20 mg bid）。<span style="border-right:2px solid var(--blue); padding-right:1px;"></span>
+      </div>
+
+      <div class="mock-meta">
+        <span class="badge-strong">强推荐</span>
+        <span style="color:var(--text2);">证据质量: 中等</span>
+        <span style="color:var(--green);">质量分 84%</span>
+      </div>
+    </div>
+    <div class="select-indicator">✓ 已选择</div>
+  </div>
+
+</div>
+
+<div style="margin-top:20px; padding:12px 16px; background:var(--bg2); border-radius:8px; border:1px solid var(--border); font-size:12px; color:var(--text2); font-family:'Inter','Noto Sans SC',sans-serif;">
+  <strong style="color:var(--text);">说明：</strong>
+  A（Inter）是目前大多数 AI 产品（OpenAI、Linear、Vercel）的选择，工程感强；
+  B 是系统字体，Mac 上显示 PingFang SC 会很漂亮，Windows 上显示 Microsoft YaHei；
+  C（Plus Jakarta Sans）圆润感更强，适合面向临床用户的友好风格。字体通过 Google Fonts 引入。
+</div>
+
+</body>
+</html>

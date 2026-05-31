@@ -10,6 +10,7 @@ def serialize_evidence_list(evidence_list) -> List[dict]:
     for e in evidence_list or []:
         result.append(
             {
+                "evidence_id": getattr(e, "evidence_id", None),
                 "title": e.title,
                 "pmid": getattr(e, "pmid", None),
                 "pmcid": getattr(e, "pmcid", None),
@@ -19,6 +20,7 @@ def serialize_evidence_list(evidence_list) -> List[dict]:
                 "grade_level": getattr(e, "grade_level", None),
                 "abstract_preview": (getattr(e, "abstract", "") or "")[:200],
                 "key_sentences": getattr(e, "key_sentences", None),
+                "evidence_role": getattr(e, "evidence_role", None),
             }
         )
     return result
@@ -28,9 +30,14 @@ def serialize_agent_output(agent_name: str, state: dict) -> dict:
     """Extract and serialize a specific agent's output from the workflow state."""
     if agent_name == "Ask":
         pico = state.get("pico_query")
+        direct = state.get("direct_answer_output")
         return {
             "pico_query": asdict(pico) if (pico and is_dataclass(pico)) else pico,
             "question_type": state.get("question_type"),
+            "route_type": state.get("route_type"),
+            "direct_answer": direct if isinstance(direct, dict) else (
+                vars(direct) if direct else None
+            ),
         }
 
     elif agent_name == "Acquire":
@@ -39,6 +46,7 @@ def serialize_agent_output(agent_name: str, state: dict) -> dict:
             "selected_count": state.get("selected_count", 0),
             "study_type_distribution": state.get("study_type_distribution", {}),
             "evidence_list": serialize_evidence_list(state.get("evidence_list")),
+            "passage_filter_stats": state.get("passage_filter_stats"),
         }
 
     elif agent_name == "Appraise":
@@ -63,15 +71,23 @@ def serialize_agent_output(agent_name: str, state: dict) -> dict:
     elif agent_name == "Apply":
         rec = state.get("recommendation")
         if rec and is_dataclass(rec):
-            return {
+            out = {
                 "recommendation": {
                     "text": rec.text,
                     "strength": rec.strength,
                     "rationale": rec.rationale,
                     "caveats": rec.caveats,
                     "evidence_quality": rec.evidence_quality,
+                    "has_core_direct": getattr(rec, "has_core_direct", False),
                 }
             }
+            oc = state.get("outcome_coverage")
+            if oc:
+                out["outcome_coverage"] = [asdict(o) if is_dataclass(o) else o for o in oc]
+            gs = state.get("gap_searches")
+            if gs:
+                out["gap_searches"] = [asdict(g) if is_dataclass(g) else g for g in gs]
+            return out
         return {}
 
     elif agent_name == "Assess":

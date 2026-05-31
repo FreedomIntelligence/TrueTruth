@@ -24,6 +24,38 @@ class RAGUnavailable(Exception):
     """Raised when hypertensiondb /search is unreachable after retries."""
 
 
+_MIN_EXPECTED_POINTS = 10000
+
+
+def check_index_health(config: RAGConfig | None = None) -> None:
+    """Warn loudly if Qdrant index looks incomplete. Called once at pipeline startup.
+
+    After a fresh rebuild Qdrant's background optimizer may still be ingesting
+    WAL entries, so we poll briefly before declaring the index incomplete.
+    """
+    import time as _time
+
+    cfg = config or RAGConfig.from_env()
+    url = f"{cfg.base_url.rstrip('/')}/health"
+    pts = None
+    try:
+        for _ in range(6):
+            resp = httpx.get(url, timeout=cfg.timeout_s)
+            data = resp.json()
+            pts = data.get("collection_points")
+            if pts is not None and pts >= _MIN_EXPECTED_POINTS:
+                return
+            _time.sleep(5)
+    except Exception:
+        pass
+    if pts is not None and pts < _MIN_EXPECTED_POINTS:
+        print(
+            f"[CRITICAL] hypertensiondb index has only {pts} chunks "
+            f"(expected >= {_MIN_EXPECTED_POINTS}). "
+            f"Run: cd hypertension && hdb index rebuild --confirm"
+        )
+
+
 @dataclass(frozen=True)
 class RAGConfig:
     base_url: str
@@ -31,6 +63,7 @@ class RAGConfig:
     top_k: int
     max_papers: int
     max_passages_per_paper: int
+    min_score: float
 
     @classmethod
     def from_env(cls) -> "RAGConfig":
@@ -40,6 +73,7 @@ class RAGConfig:
             top_k=int(os.getenv("RAG_SEARCH_TOP_K", "15")),
             max_papers=int(os.getenv("RAG_MAX_PAPERS", "6")),
             max_passages_per_paper=int(os.getenv("RAG_MAX_PASSAGES_PER_PAPER", "3")),
+            min_score=float(os.getenv("RAG_MIN_SCORE", "0.80")),
         )
 
 
@@ -137,12 +171,24 @@ def _aggregate(raw_results: list[dict], cfg: RAGConfig) -> list[Evidence]:
                 supporting_passages=passages,
                 relevance_score=max_score,
                 # Pre-filled from frontmatter metadata when available;
+                # Prefer explicit study_type (GRADE code) over the filing type field.
                 # None means Appraise will infer from passage text instead.
-                study_type=meta.get("type") or None,
+                study_type=meta.get("study_type") or meta.get("type") or None,
                 grade_level=meta.get("grade_level") or None,
                 rob_overall=meta.get("rob_overall") or None,
             )
         )
 
     papers.sort(key=lambda e: e.relevance_score, reverse=True)
+
+    if cfg.min_score > 0:
+        before = len(papers)
+        papers = [p for p in papers if p.relevance_score >= cfg.min_score]
+        dropped = before - len(papers)
+        if dropped:
+            print(
+                f"[RAG-FILTER] Dropped {dropped} paper(s) below "
+                f"min_score={cfg.min_score:.2f}"
+            )
+
     return papers[: cfg.max_papers]

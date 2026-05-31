@@ -1,0 +1,88 @@
+<h2>"思考中…" 区展示哪些内容？</h2>
+<p class="subtitle">Chat 模式下折叠的"思考"区，展开后看到什么？</p>
+
+<div class="cards" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+
+  <!-- Option A: 极简进度 -->
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f1117; padding:12px; font-size:11px; line-height:1.6; border-radius:6px; font-family:monospace;">
+      <div style="color:#f97316; font-size:11px; font-weight:700; margin-bottom:8px; display:flex; justify-content:space-between;">
+        <span>▼ 思考过程 <span style="color:#64748b; font-weight:400;">(38s)</span></span>
+        <span style="color:#64748b; font-size:10px; cursor:pointer;">收起</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <div style="color:#86efac; font-size:11px;">✓ Ask — 问题已结构化</div>
+        <div style="color:#86efac; font-size:11px;">✓ Acquire — 检索 6 篇相关文献</div>
+        <div style="color:#86efac; font-size:11px;">✓ Appraise — 证据评级完成</div>
+        <div style="color:#f97316; font-size:11px;">⏳ Apply — 生成推荐意见...</div>
+        <div style="color:#475569; font-size:11px;">· Assess</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 极简进度条</h3>
+      <p>只显示五个阶段的状态（完成/进行中/等待）。干净，快速扫一眼就够了。</p>
+    </div>
+  </div>
+
+  <!-- Option B: 丰富摘要 -->
+  <div class="card" data-choice="rich" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f1117; padding:12px; font-size:10px; line-height:1.5; border-radius:6px; font-family:monospace;">
+      <div style="color:#f97316; font-size:11px; font-weight:700; margin-bottom:8px; display:flex; justify-content:space-between;">
+        <span>▼ 思考过程 <span style="color:#64748b; font-weight:400;">(38s)</span></span>
+        <span style="color:#64748b; font-size:10px; cursor:pointer;">收起</span>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <div style="padding:5px 8px; background:#1a2e1a; border-radius:4px; border-left:2px solid #22c55e;">
+          <div style="color:#86efac; font-weight:700;">✓ Ask <span style="color:#475569; font-weight:400; font-size:9px;">3.2s</span></div>
+          <div style="color:#64748b; font-size:9px;">PICO 解析 → 治疗类 | 患者：妊娠期高血压 | 干预：降压治疗</div>
+        </div>
+        <div style="padding:5px 8px; background:#1a2e1a; border-radius:4px; border-left:2px solid #22c55e;">
+          <div style="color:#86efac; font-weight:700;">✓ Acquire <span style="color:#475569; font-weight:400; font-size:9px;">8.7s</span></div>
+          <div style="color:#64748b; font-size:9px;">检索到 15 条 → 筛选 6 篇 | RCT×3 SR×2 GL×1</div>
+        </div>
+        <div style="padding:5px 8px; background:#1a2e1a; border-radius:4px; border-left:2px solid #22c55e;">
+          <div style="color:#86efac; font-weight:700;">✓ Appraise <span style="color:#475569; font-weight:400; font-size:9px;">22.1s</span></div>
+          <div style="color:#64748b; font-size:9px;">High×1 Moderate×3 Low×2 | 无冲突</div>
+        </div>
+        <div style="padding:5px 8px; background:#1e1408; border-radius:4px; border-left:2px solid #f97316; animation: none;">
+          <div style="color:#f97316; font-weight:700;">⏳ Apply</div>
+          <div style="color:#64748b; font-size:9px;">基于 6 篇证据生成循证推荐...</div>
+        </div>
+        <div style="padding:5px 8px; background:#1a1d27; border-radius:4px; border-left:2px solid #2e3348;">
+          <div style="color:#475569; font-weight:700;">· Assess</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 阶段摘要（推荐）</h3>
+      <p>每个阶段显示关键发现：耗时、检索到几篇、证据等级分布、是否有冲突等。既简洁又有信息量。</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:14px; background:#1a1d27; border-radius:8px; padding:12px; border:1px solid #2e3348;">
+  <div class="label" style="margin-bottom:6px;">另一个问题：log 中哪些行值得展示？</div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:11px; color:#94a3b8;">
+    <div>
+      <div style="color:#86efac; margin-bottom:4px;">✅ 推荐保留（展示在思考区）</div>
+      <div style="color:#64748b; line-height:1.8;">
+        <span style="background:#1a3a2a; padding:1px 5px; border-radius:3px; margin-right:4px;">[TIMING]</span>各阶段耗时<br>
+        <span style="background:#1a3a2a; padding:1px 5px; border-radius:3px; margin-right:4px;">检索到 N 篇</span>Acquire 结果<br>
+        <span style="background:#1a3a2a; padding:1px 5px; border-radius:3px; margin-right:4px;">GRADE=High</span>证据等级<br>
+        <span style="background:#1a3a2a; padding:1px 5px; border-radius:3px; margin-right:4px;">strength=</span>推荐强度<br>
+        <span style="background:#1e3a5f; padding:1px 5px; border-radius:3px; margin-right:4px;">[LLM-RETRY]</span>重试警告
+      </div>
+    </div>
+    <div>
+      <div style="color:#fca5a5; margin-bottom:4px;">❌ 建议过滤（不展示）</div>
+      <div style="color:#64748b; line-height:1.8;">
+        <span style="background:#2a1515; padding:1px 5px; border-radius:3px; margin-right:4px;">raw JSON</span>LLM 原始输出<br>
+        <span style="background:#2a1515; padding:1px 5px; border-radius:3px; margin-right:4px;">[WARMUP]</span>预热日志<br>
+        <span style="background:#2a1515; padding:1px 5px; border-radius:3px; margin-right:4px;">Python traceback</span>仅在 error 时<br>
+        <span style="background:#2a1515; padding:1px 5px; border-radius:3px; margin-right:4px;">CACHE/TTFT</span>可折叠放底部
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,104 @@
+<h2>最后一个问题：推荐答案怎么"流出来"？</h2>
+<p class="subtitle">这决定后端要不要改 LLM 调用方式</p>
+
+<div class="cards" style="grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+
+  <!-- Option A: 真实 token 流 -->
+  <div class="card" data-choice="real-stream" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117; padding:16px; border-radius:8px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+
+      <div style="font-size:12px; color:#94a3b8; margin-bottom:10px;">
+        妊娠期高血压的降压目标是什么？
+      </div>
+
+      <div style="border:1px solid #2e4a2e; border-radius:8px; padding:10px 12px; margin-bottom:12px; background:#0f1d0f;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;">
+          <span style="color:#4ade80; font-size:13px; font-weight:600;">▼ 思考过程</span>
+          <span style="color:#475569; font-size:11px;">42s</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:5px; font-size:12px;">
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="color:#4ade80; font-weight:600; width:68px; flex-shrink:0;">✓ Ask</span>
+            <span style="color:#6b7280;">PICO 解析完成 · 治疗类问题 · <span style="color:#94a3b8;">3.1s</span></span>
+          </div>
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="color:#4ade80; font-weight:600; width:68px; flex-shrink:0;">✓ Acquire</span>
+            <span style="color:#6b7280;">6 篇文献 · RCT×3 SR×2 GL×1 · <span style="color:#94a3b8;">9.2s</span></span>
+          </div>
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="color:#4ade80; font-weight:600; width:68px; flex-shrink:0;">✓ Appraise</span>
+            <span style="color:#6b7280;">High×1 Moderate×3 · 无冲突 · <span style="color:#94a3b8;">21.4s</span></span>
+          </div>
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="color:#4ade80; font-weight:600; width:68px; flex-shrink:0;">✓ Apply</span>
+            <span style="color:#6b7280;">推荐生成 · <span style="color:#94a3b8;">8.3s</span></span>
+          </div>
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="color:#4ade80; font-weight:600; width:68px; flex-shrink:0;">✓ Assess</span>
+            <span style="color:#6b7280;">质量评分 0.84 · <span style="color:#94a3b8;">2.1s</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:14px; color:#e2e8f0; line-height:1.8;">
+        对于妊娠期高血压患者，建议将收缩压控制在 <strong style="color:#60a5fa;">130–155 mmHg</strong>，舒张压控制在 <strong style="color:#60a5fa;">80–105 mmHg</strong>。首选口服降压药物为<span style="border-right:2px solid #60a5fa; padding-right:1px; margin-left:2px;"></span>
+      </div>
+
+      <div style="margin-top:12px; padding:10px 12px; background:#111827; border-radius:6px; border:1px solid #1f2937;">
+        <div style="display:flex; gap:16px; font-size:11px; color:#6b7280;">
+          <span>推荐强度：<span style="background:#14532d; color:#86efac; padding:1px 6px; border-radius:3px; font-weight:700;">强推荐</span></span>
+          <span>证据质量：<span style="color:#94a3b8;">中等</span></span>
+          <span>质量评分：<span style="color:#4ade80;">84%</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <h3>A. 真实 token 流（推荐）</h3>
+      <p>Apply agent 边生成边推送 token 到前端，字符真正逐字出现。答案生成期间用户就能开始阅读。需要后端 Apply agent 改用 streaming 模式。</p>
+    </div>
+  </div>
+
+  <!-- Option B: 完成后动画 -->
+  <div class="card" data-choice="animate-reveal" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117; padding:16px; border-radius:8px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+
+      <div style="font-size:12px; color:#94a3b8; margin-bottom:10px;">
+        妊娠期高血压的降压目标是什么？
+      </div>
+
+      <div style="border:1px solid #2e4a2e; border-radius:8px; padding:10px 12px; margin-bottom:12px; background:#0f1d0f;">
+        <div style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <span style="color:#4ade80; font-size:13px; font-weight:600;">▶ 思考过程</span>
+          <span style="color:#475569; font-size:11px;">42s · 已折叠</span>
+        </div>
+      </div>
+
+      <div style="font-size:11px; color:#475569; display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+        <div style="width:8px; height:8px; border-radius:50%; background:#3b82f6; animation:none;"></div>
+        Apply 完成，答案加载中…
+      </div>
+
+      <div style="font-size:14px; color:#e2e8f0; line-height:1.8; overflow:hidden;">
+        <span style="opacity:1; transition:opacity 0.5s;">对于妊娠期高血压患者，建议将收缩压控制在 </span><strong style="color:#60a5fa; opacity:0.4;">130–155 mmHg</strong><span style="opacity:0.2;">，舒张压控制在 80–105 mmHg。首选口服降压药物为拉贝洛尔或硝苯地平缓释片。</span>
+      </div>
+
+      <div style="margin-top:10px; font-size:11px; color:#475569; font-style:italic;">
+        （文字 fade-in 动画，Apply 完成后整段出现）
+      </div>
+    </div>
+
+    <div class="card-body">
+      <h3>B. 完成后 fade-in 动画</h3>
+      <p>Apply agent 仍走阻塞式调用，生成完成后整段推荐一次性发给前端，再用 CSS 动画渐入显示。不改后端逻辑，但并不是真正的"流式"。</p>
+    </div>
+  </div>
+
+</div>
+
+<div style="background:#1a1d27; border-radius:8px; padding:14px; border:1px solid #2e3348; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:12px; color:#94a3b8;">
+  <div style="color:#e2e8f0; font-weight:600; margin-bottom:6px;">关于 A 方案的技术可行性</div>
+  后端 <code style="background:#242736; padding:1px 5px; border-radius:3px; color:#93c5fd;">_LLMClient</code> 已内置 <code style="background:#242736; padding:1px 5px; border-radius:3px; color:#93c5fd;">stream_reasoning()</code> 流式方法。
+  方案 A 只需：① Apply agent 改调 streaming API，② token 通过新的 <code style="background:#242736; padding:1px 5px; border-radius:3px; color:#93c5fd;">AGENT_TOKEN</code> SSE 事件推给前端。
+  不影响 LLM 输出内容，只改输出传输方式，<strong style="color:#e2e8f0;">不需要 A/B 质量实验</strong>。
+</div>
