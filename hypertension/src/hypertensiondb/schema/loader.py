@@ -8,10 +8,12 @@ from hypertensiondb.schema.rct import RctFrontmatter
 from hypertensiondb.schema.sr_meta import SrFrontmatter, MetaFrontmatter
 from hypertensiondb.schema.guideline import GuidelineFrontmatter
 from hypertensiondb.schema.tcm import TcmFrontmatter
+from hypertensiondb.schema.label import LabelFrontmatter
 from hypertensiondb.schema.sections import split_sections
 
 AnyFrontmatter = Union[
-    RctFrontmatter, SrFrontmatter, MetaFrontmatter, GuidelineFrontmatter, TcmFrontmatter
+    RctFrontmatter, SrFrontmatter, MetaFrontmatter, GuidelineFrontmatter,
+    TcmFrontmatter, LabelFrontmatter,
 ]
 
 _TYPE_MODEL = {
@@ -20,6 +22,7 @@ _TYPE_MODEL = {
     EvidenceType.META: MetaFrontmatter,
     EvidenceType.GL: GuidelineFrontmatter,
     EvidenceType.TCM: TcmFrontmatter,
+    EvidenceType.DRUG_SAFETY: LabelFrontmatter,
 }
 
 

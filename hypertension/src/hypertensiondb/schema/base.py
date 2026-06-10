@@ -11,6 +11,11 @@ class EvidenceType(StrEnum):
     META = "META"
     GL = "GL"
     TCM = "TCM"
+    # Drug-label safety facts (openFDA/DailyMed), structured by SmPC dimensions.
+    # The string value is deliberately underscore-free: evidence ids embed the
+    # type token, and the user-facing citation renderer matches the type segment
+    # with `EV-[A-Z]+-...` (underscore would break id capture → leaked raw id).
+    DRUG_SAFETY = "DRUGSAFETY"
 
 
 class Language(StrEnum):
@@ -34,7 +39,7 @@ class FullTextStatus(StrEnum):
 
 
 _ID_PATTERN = re.compile(
-    r"^EV-(RCT|SR|META|GL|TCM)-\d{4}-.+-\d{3}$"
+    r"^EV-(RCT|SR|META|GL|TCM|DRUGSAFETY)-\d{4}-.+-\d{3}$"
 )
 
 

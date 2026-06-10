@@ -66,6 +66,15 @@ class Evidence:
     tags: List[str] = field(default_factory=list)
     year: Optional[int] = None
 
+    # Bibliographic metadata (best-effort, fetched from /evidence/{id} detail
+    # endpoint; empty when the detail lookup is unavailable). Used only to
+    # render human-readable numbered references in the user-facing output.
+    authors: List[str] = field(default_factory=list)
+    journal: Optional[str] = None
+    doi: Optional[str] = None
+    pmid: Optional[str] = None
+    url: Optional[str] = None
+
     # Filled by Appraise:
     study_type: Optional[str] = None
     grade_level: Optional[str] = None                 # very_low | low | moderate | high
@@ -212,6 +221,11 @@ class WorkflowState(TypedDict):
     agent_call_counts: Dict[str, int]
     pico_query: Optional[PICOQuery]
     evidence_list: Optional[List[Evidence]]
+    # Grounded DRUG_SAFETY label evidence (openFDA), retrieved by a separate
+    # type=DRUGSAFETY sub-query. Kept distinct from evidence_list so Appraise/
+    # GRADE never grades a regulatory label as a study; consumed by Apply to
+    # fill the SmPC-structured safety section with cited facts.
+    safety_evidence: Optional[List[Evidence]]
     appraisal_results: Optional[AppraisalResults]
     recommendation: Optional[Recommendation]
     assessment: Optional[Assessment]

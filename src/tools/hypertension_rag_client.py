@@ -99,12 +99,109 @@ def search(query: str, config: RAGConfig | None = None) -> tuple[list[Evidence],
     raw_results: list[dict] = payload.get("results") or []
     degraded: list[str] = payload.get("degraded") or []
     evidence_list = _aggregate(raw_results, cfg)
+    _enrich_bibliography(evidence_list, cfg)
     return evidence_list, degraded
 
 
-def _request_with_retries(query: str, cfg: RAGConfig) -> dict[str, Any]:
+@dataclass(frozen=True)
+class SafetyRAGConfig:
+    """Config for the DRUG_SAFETY sub-retrieval.
+
+    Separate from RAGConfig because drug-label safety chunks are English and
+    queried cross-lingually (Chinese question), so rerank scores run lower than
+    the study-evidence min_score=0.80 gate would allow — we relax min_score and
+    surface more papers so multiple drugs/classes in the question are covered.
+    """
+    base_url: str
+    timeout_s: float
+    top_k: int
+    max_papers: int
+    max_passages_per_paper: int
+    min_score: float
+
+    @classmethod
+    def from_env(cls) -> "SafetyRAGConfig":
+        return cls(
+            base_url=os.getenv("HYPERTENSION_API_URL", "http://localhost:8000"),
+            timeout_s=float(os.getenv("HYPERTENSION_API_TIMEOUT", "10")),
+            top_k=int(os.getenv("RAG_SAFETY_TOP_K", "20")),
+            max_papers=int(os.getenv("RAG_SAFETY_MAX_PAPERS", "6")),
+            max_passages_per_paper=int(os.getenv("RAG_SAFETY_MAX_PASSAGES", "4")),
+            min_score=float(os.getenv("RAG_SAFETY_MIN_SCORE", "0.0")),
+        )
+
+
+def search_safety(query: str, config: SafetyRAGConfig | None = None) -> list[Evidence]:
+    """Retrieve grounded DRUG_SAFETY label chunks for the drugs/classes in `query`.
+
+    A separate sub-query (type=DRUGSAFETY) so the Apply agent can fill an
+    SmPC-structured safety section from authoritative, citable drug labels rather
+    than free LLM recall. Returns Evidence objects with evidence_role="safety_only";
+    these are intentionally kept OUT of the main evidence_list (Appraise/GRADE must
+    not grade a regulatory label as if it were a study).
+
+    Never raises: on any failure returns [] (safety section then degrades to a
+    "no grounded label retrieved" gap rather than blocking the answer).
+    """
+    cfg = config or SafetyRAGConfig.from_env()
+    # Reuse RAGConfig's aggregation by mirroring fields.
+    agg_cfg = RAGConfig(
+        base_url=cfg.base_url, timeout_s=cfg.timeout_s, top_k=cfg.top_k,
+        max_papers=cfg.max_papers, max_passages_per_paper=cfg.max_passages_per_paper,
+        min_score=cfg.min_score,
+    )
+    try:
+        payload = _request_with_retries(query, agg_cfg, extra_params={"type": "DRUGSAFETY"})
+    except RAGUnavailable:
+        return []
+    raw_results: list[dict] = payload.get("results") or []
+    evidence_list = _aggregate(raw_results, agg_cfg)
+    for ev in evidence_list:
+        ev.evidence_role = "safety_only"
+    _enrich_bibliography(evidence_list, agg_cfg)
+    return evidence_list
+
+
+def _enrich_bibliography(evidence_list: list[Evidence], cfg: RAGConfig) -> None:
+    """Best-effort: fill authors/journal/doi/pmid/url from the /evidence/{id}
+    detail endpoint.
+
+    The /search payload only carries indexed fields (title/year/type/grade);
+    full bibliographic metadata lives in the source frontmatter, exposed via
+    GET /evidence/{id}. We fetch it per paper so the user-facing output can
+    render real numbered references instead of internal EV-ids.
+
+    This is non-critical: any failure (endpoint down, 404, timeout) leaves the
+    bib fields empty and the renderer degrades to an author-from-id label. We
+    therefore never raise from here.
+    """
+    base = cfg.base_url.rstrip("/")
+    for ev in evidence_list:
+        if not ev.evidence_id:
+            continue
+        try:
+            resp = httpx.get(f"{base}/evidence/{ev.evidence_id}", timeout=cfg.timeout_s)
+            if resp.status_code != 200:
+                continue
+            fm = (resp.json() or {}).get("frontmatter") or {}
+        except Exception:
+            continue
+        authors = fm.get("authors")
+        if isinstance(authors, list):
+            ev.authors = [str(a) for a in authors if a]
+        ev.journal = fm.get("journal") or None
+        ev.doi = fm.get("doi") or None
+        ev.pmid = fm.get("pmid") or None
+        ev.url = fm.get("url") or None
+
+
+def _request_with_retries(
+    query: str, cfg: RAGConfig, extra_params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     url = f"{cfg.base_url.rstrip('/')}/search"
     params = {"q": query, "top_k": cfg.top_k}
+    if extra_params:
+        params.update(extra_params)
     backoffs = [0.5, 2.0]  # 2 retries; total max wait ~2.5s on top of timeouts
 
     last_exc: Exception | None = None

@@ -383,15 +383,18 @@ def format_output(state: Dict[str, Any]) -> str:
             for c in caveats:
                 output.append(f"     • {c}")
     elif rec:
-        output.append(f"A: {rec.text}")
+        from src.render.recommendation import render_recommendation
+        # Merge safety_evidence so grounded [EV-DRUGSAFETY-.../section] citations
+        # resolve to their label metadata in the reference list (otherwise they
+        # degrade to a fabricated-looking "Valsartan 等" author line). Render-only
+        # merge — does NOT re-enter GRADE/Appraise (which stay study-only upstream).
+        _render_ev = (state.get("evidence_list") or []) + (state.get("safety_evidence") or [])
+        rendered = render_recommendation(rec, _render_ev, state.get("outcome_coverage"))
+        output.append(f"A: {rendered}")
         output.append("")
+        # Compact metadata badges (labels live here, not as a prose prefix).
         output.append(f"   Recommendation Strength : {rec.strength}")
         output.append(f"   Evidence Quality        : {rec.evidence_quality}")
-        output.append(f"   Rationale               : {rec.rationale}")
-        if rec.caveats:
-            output.append("   Caveats                 :")
-            for c in rec.caveats:
-                output.append(f"     • {c}")
         if assess:
             output.append(
                 f"   Overall Quality Score   : {assess.quality_score:.2f} / 1.0"

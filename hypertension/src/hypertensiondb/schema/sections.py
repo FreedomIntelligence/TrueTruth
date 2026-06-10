@@ -9,6 +9,16 @@ _SECTION_MAP: list[tuple[re.Pattern, str]] = [
     (re.compile(r"结果|Results?", re.I),                 "results"),
     (re.compile(r"讨论|Discussion", re.I),               "discussion"),
     (re.compile(r"结论|Conclusions?", re.I),             "conclusion"),
+    # --- SmPC drug-safety dimensions (DRUG_SAFETY evidence; openFDA/DailyMed) ---
+    # Order matters: boxed-warning before the generic warning pattern, since
+    # "黑框警告" contains "警告" and must not fall through to warnings_precautions.
+    (re.compile(r"黑框警告|Boxed Warning", re.I),                       "boxed_warning"),
+    (re.compile(r"禁忌|Contraindication", re.I),                       "contraindications"),
+    (re.compile(r"警告|注意事项|Warning|Precaution", re.I),            "warnings_precautions"),
+    (re.compile(r"相互作用|Interaction", re.I),                        "drug_interactions"),
+    (re.compile(r"妊娠|哺乳|特殊人群|Pregnan|Lactation|Specific Population", re.I),
+                                                                       "pregnancy_lactation"),
+    (re.compile(r"不良反应|Adverse", re.I),                            "adverse_reactions"),
     (re.compile(r"参考文献|References?", re.I),          "references"),
 ]
 

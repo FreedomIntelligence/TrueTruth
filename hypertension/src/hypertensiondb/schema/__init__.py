@@ -7,6 +7,7 @@ from hypertensiondb.schema.rct import RctFrontmatter
 from hypertensiondb.schema.sr_meta import SrFrontmatter, MetaFrontmatter
 from hypertensiondb.schema.guideline import GuidelineFrontmatter, Recommendation
 from hypertensiondb.schema.tcm import TcmFrontmatter
+from hypertensiondb.schema.label import LabelFrontmatter
 from hypertensiondb.schema.loader import load_evidence, AnyFrontmatter
 from hypertensiondb.schema.sections import split_sections
 
@@ -17,6 +18,7 @@ __all__ = [
     "RctFrontmatter", "SrFrontmatter", "MetaFrontmatter",
     "GuidelineFrontmatter", "Recommendation",
     "TcmFrontmatter",
+    "LabelFrontmatter",
     "load_evidence", "AnyFrontmatter",
     "split_sections",
 ]

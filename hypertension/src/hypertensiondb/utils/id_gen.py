@@ -3,7 +3,7 @@ from pathlib import Path
 
 EVIDENCE_ROOT = Path(__file__).parent.parent.parent.parent / "evidence"
 
-_VALID_TYPES = {"RCT", "SR", "META", "GL", "TCM"}
+_VALID_TYPES = {"RCT", "SR", "META", "GL", "TCM", "DRUGSAFETY"}
 
 
 def next_id(ev_type: str, year: int, author_pinyin: str) -> str:

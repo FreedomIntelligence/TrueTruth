@@ -59,6 +59,19 @@ def robust_parse_json(content: str) -> dict:
     except json.JSONDecodeError:
         pass
 
+    # Stage 2.5: tolerant parse allowing literal control chars inside strings.
+    # The Apply `recommendation` is now multi-paragraph prose; LLMs frequently
+    # emit literal newlines/tabs inside that string rather than \n. strict=False
+    # accepts them. Crucially this runs BEFORE the line-based repair regexes
+    # below, which would otherwise mis-insert commas inside the multi-line prose
+    # and corrupt an otherwise-valid object (the observed "Expecting property
+    # name" failures were repair-induced, not original).
+    for _candidate in (content, raw):
+        try:
+            return json.loads(_candidate, strict=False)
+        except json.JSONDecodeError:
+            pass
+
     # Stage 3: heuristic repair then parse
     repaired = _attempt_json_repair(raw)
     try:

@@ -31,6 +31,13 @@ docs/plans/
 docs/superpowers/
 experiments/
 
+# Scratch / intermediate run artifacts (not for version control)
+_*.txt
+_*.json
+scripts/_*.json
+*.partial.bak.json
+*.prefix.json
+
 # hypertension/ is included as a subdirectory.
 # Qdrant vector data is excluded (pre-built Docker image on Docker Hub).
 hypertension/data/
