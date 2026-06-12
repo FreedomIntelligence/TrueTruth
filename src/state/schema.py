@@ -113,6 +113,8 @@ class Assessment:
     gaps: List[str]
     needs_backtrack: bool
     backtrack_reason: Optional[str]
+    dimension_scores: Dict[str, str] = field(default_factory=dict)
+    dimension_justifications: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

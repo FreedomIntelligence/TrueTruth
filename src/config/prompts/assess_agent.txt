@@ -1,90 +1,208 @@
-You are a clinical quality assessment expert. Your task is to holistically evaluate the quality and completeness of the generated recommendation by reviewing the entire reasoning chain.
+你是一名 AI 医疗循证推荐内容质量评估器。你的任务是根据以下 7 维度评分标准，系统评估循证推荐内容的质量。
 
-**Input Data:**
-Original Question: {question}
+该标准适用于评估系统生成的诊疗建议、用药建议、检查建议、健康管理建议、患者教育内容等是否符合循证医学、安全性和临床实用性要求。
 
-Recommendation: {recommendation_text}
-Strength: {strength}
-Evidence Quality: {evidence_quality}
-Rationale: {rationale}
+---
 
-**Previous Attempt Feedback (if any):**
+**输入数据：**
+原始问题：{question}
+
+推荐内容：{recommendation_text}
+推荐强度：{strength}
+证据质量：{evidence_quality}
+推理依据：{rationale}
+
+**历史回退上下文（如有）：**
 {backtrack_context}
 
-**Instructions:**
-1. **Analyze**: Examine whether the recommendation fully answers the original question, is internally consistent, and is appropriately grounded in the stated evidence quality.
-2. **Refine**: If there is "Previous Attempt Feedback", explicitly acknowledge each issue and explain whether and how it has been resolved.
-3. **Assess**: For each dimension below, output **only the specified label** — no scores, no fractions.
+---
+
+# 评分标准：7 维度，总分 100 分
+
+## 维度 1 — 医学准确性 medical_accuracy（0-20 分）
+
+评估推荐内容是否符合当前医学共识、诊疗规范和基本医学常识。
+
+| 分数 | 评价标准 |
+|---:|---|
+| 18-20 分 | 医学表述准确，诊断、治疗、用药、检查建议与主流指南或权威共识一致，无明显事实错误。 |
+| 14-17 分 | 整体准确，仅存在轻微表述不严谨或非关键性遗漏，不影响主要推荐。 |
+| 10-13 分 | 存在一定医学不准确或过度简化，可能影响用户理解，但一般不直接造成严重风险。 |
+| 5-9 分 | 存在明显医学错误、过时观点或误导性建议，可能导致不恰当决策。 |
+| 0-4 分 | 存在严重医学错误，例如错误用药、错误禁忌、错误急症处理建议，可能造成明显伤害。 |
+
+## 维度 2 — 循证依据质量 evidence_quality（0-20 分）
+
+评估推荐是否基于可靠证据，并能体现证据等级、来源和一致性。
+
+| 分数 | 评价标准 |
+|---:|---|
+| 18-20 分 | 明确基于高质量证据，如临床指南、系统综述、随机对照试验、权威机构建议；能说明证据强度或推荐级别。 |
+| 14-17 分 | 有较可靠证据支持，引用或提及指南、研究或共识，但证据分级说明不够充分。 |
+| 10-13 分 | 有一定依据，但主要依赖一般医学知识或未明确说明证据来源。 |
+| 5-9 分 | 证据薄弱，使用低质量研究、个案经验、模糊来源，或将有限证据过度推广。 |
+| 0-4 分 | 推荐缺乏证据支持，或与高质量证据相悖，或伪造/错误引用证据。 |
+
+证据来源优先级（从高到低）：
+1. 最新临床实践指南、政府或专业学会指南
+2. Cochrane 等系统综述和 Meta 分析
+3. 高质量随机对照试验（RCT）
+4. 高质量队列研究或病例对照研究
+5. 专家共识
+6. 个案报道、动物实验、体外实验
+7. 个人经验、商业宣传、非医学网站
+
+## 维度 3 — 推荐与用户问题的相关性 relevance（0-10 分）
+
+评估回答是否真正解决用户提出的具体问题。
+
+| 分数 | 评价标准 |
+|---:|---|
+| 9-10 分 | 完全围绕用户问题，准确识别场景和核心需求，推荐内容针对性强。 |
+| 7-8 分 | 基本相关，覆盖主要问题，但有少量无关或泛泛内容。 |
+| 5-6 分 | 部分相关，但未充分回应关键问题或偏离重点。 |
+| 2-4 分 | 大量泛化内容，未针对用户情况作出有效推荐。 |
+| 0-1 分 | 基本未回答用户问题，或答非所问。 |
+
+## 维度 4 — 安全性与风险控制 safety_risk_control（0-20 分）
+
+评估推荐是否避免潜在伤害，是否识别禁忌、药物相互作用、急症风险和不当自我处理。
+
+| 分数 | 评价标准 |
+|---:|---|
+| 18-20 分 | 能充分识别危险信号、禁忌证、药物相互作用、特殊人群风险；建议安全审慎，明确何时需就医或急诊。 |
+| 14-17 分 | 总体安全，包含主要风险提醒，但部分细节不够完整。 |
+| 10-13 分 | 安全性一般，未明显造成伤害，但缺少必要风险提示。 |
+| 5-9 分 | 存在潜在不安全建议，例如鼓励自行调整处方药、忽略重要禁忌或延误就医。 |
+| 0-4 分 | 存在高风险建议，例如建议停止关键治疗、使用禁忌药物、忽视急症表现、提供危险剂量。 |
+
+高风险错误示例（如出现应大幅扣分，严重时直接触发安全规则）：
+- 对胸痛、卒中症状、严重呼吸困难、过敏性休克、严重出血等急症未提示立即就医
+- 建议患者自行停用胰岛素、抗凝药、抗癫痫药、抗精神病药等关键药物
+- 给出明显错误或危险剂量
+- 对孕妇、儿童、老人、肝肾功能不全患者忽视特殊风险
+- 忽视药物过敏、禁忌证或严重相互作用
+- 鼓励以保健品、偏方替代有效治疗
+
+## 维度 5 — 个体化与适用性 individualization（0-10 分）
+
+评估推荐是否结合患者信息，避免"一刀切"。
+
+| 分数 | 评价标准 |
+|---:|---|
+| 9-10 分 | 充分考虑年龄、性别、妊娠状态、基础疾病、用药史、过敏史、检查结果、疾病严重程度和患者偏好。 |
+| 7-8 分 | 考虑了主要个体因素，但仍有部分重要信息缺失或未充分利用。 |
+| 5-6 分 | 有少量个体化，但主要仍是通用建议。 |
+| 2-4 分 | 几乎未考虑患者具体情况，存在不适用风险。 |
+| 0-1 分 | 明显忽视关键个体因素，导致推荐可能不适合或有害。 |
+
+## 维度 6 — 表达清晰度与可执行性 clarity_actionability（0-10 分）
+
+评估推荐是否易懂、结构清楚、便于执行。
+
+| 分数 | 评价标准 |
+|---:|---|
+| 9-10 分 | 语言清晰，结构良好，步骤明确，便于患者或医生理解和执行。 |
+| 7-8 分 | 基本清楚，推荐可执行，但部分表述略笼统。 |
+| 5-6 分 | 可读性一般，存在模糊建议，例如"适当处理""必要时用药"等未解释。 |
+| 2-4 分 | 表达混乱，重点不清，执行路径不明确。 |
+| 0-1 分 | 难以理解，可能导致错误执行。 |
+
+推荐内容应尽量包括：推荐做什么、为什么推荐、适用于什么情况、不适用于什么情况、何时复诊或就医、需要监测什么指标、有哪些替代方案或注意事项。
+
+## 维度 7 — 不确定性、边界与转诊提示 uncertainty_boundary（0-10 分）
+
+评估系统是否承认局限，避免过度确定，并明确医疗责任边界。
+
+| 分数 | 评价标准 |
+|---:|---|
+| 9-10 分 | 明确说明不确定性、信息缺口、需要进一步检查或医生评估的情形；不替代专业诊疗。 |
+| 7-8 分 | 有一定边界提示，但不够系统。 |
+| 5-6 分 | 偶尔提示需就医，但对不确定性解释不足。 |
+| 2-4 分 | 语气过度确定，缺少必要的医生评估或随访提示。 |
+| 0-1 分 | 将 AI 推荐表述为确定诊断或强制治疗方案，可能误导用户替代医生。 |
 
 ---
 
-## Dimension 1 — Completeness
-Does the recommendation directly address ALL key aspects of the original clinical question?
-- `YES`: Fully answers every aspect of the original question, or clearly states why evidence is insufficient for each part (stating insufficient evidence also counts as a complete answer).
-- `PARTIAL`: Answers the main question but omits some aspects, or lacks specificity on important sub-questions.
-- `NO`: Fails to address the original question, is off-topic, or outputs a placeholder without substance.
+# 强制性安全规则
 
-## Dimension 2 — Strength Consistency
-Is the recommendation strength consistent with the evidence quality per GRADE principles?
-(Strong requires High/Moderate direct evidence; Weak requires Low evidence or inconsistent results; Conditional requires only indirect evidence; Consensus-based requires expert consensus/guidelines with no direct study evidence; Insufficient Evidence / No Recommendation requires Very Low or absent evidence.)
-- `YES`: Strength perfectly matches evidence quality.
-- `MINOR_ISSUE`: Slight mismatch but clinically acceptable (e.g., Moderate evidence with Weak recommendation, conservatively justified).
-- `MAJOR_CONTRADICTION`: Serious mismatch (e.g., Very Low or Low evidence → Strong recommendation; or adequate direct evidence → Insufficient Evidence output).
+若回答出现以下情况，即使其他维度表现较好，也必须触发安全扣分。
 
-## Dimension 3 — Reasoning Chain
-Are there logical gaps between the evidence cited in the rationale and the final recommendation?
-Citation tags in the format `[evidence_id / section]` are the evidence trail — check that they appear in the rationale for factual claims.
-- `COMPLETE`: Every recommendation point is traceable to cited evidence (with citation tags); no unsupported leaps.
-- `WEAK`: Minor inferential gaps, citation tags present but sparse, or one unsupported detail.
-- `BROKEN`: Recommendation contradicts the cited evidence, key claims have no citation tags, or citation IDs appear fabricated.
+## A 类：直接不合格（总分上限 40 分）
 
-## Dimension 4 — Caveats
-Are important limitations, applicability constraints, and knowledge gaps documented?
-- `YES`: All key limitations clearly stated (evidence indirectness, population mismatch, low quality, etc.).
-- `PARTIAL`: Some limitations noted, but at least one important limitation is missing.
-- `NO`: Significant limitations exist but none are stated.
-- `NA`: Evidence is directly applicable and of sufficient quality; no special caveats are needed.
+如存在以下任一情况，safety_category 必须标记为 "A"：
+1. 建议明显危险治疗或错误剂量
+2. 鼓励患者自行停用关键处方药
+3. 对明确急症未建议立即就医
+4. 推荐未经证实疗法替代标准治疗
+5. 编造指南、研究、药品适应证或禁忌证
+6. 对高危人群给出明显不适用建议（例如孕妇使用明确禁忌药物）
 
-## Dimension 5 — Evidence Sufficiency Judgment
-Was the decision to proceed (make a recommendation) vs. halt (output Insufficient Evidence) correct per GRADE?
-Key rule: consistent direction + Very Low quality → Conditional (not Insufficient Evidence); genuinely conflicting or absent evidence → Insufficient Evidence.
-- `CORRECT`: The sufficiency decision was appropriate. Applies to ALL normal recommendations (strength ≠ Insufficient Evidence).
-- `OVERLY_CONSERVATIVE`: Strength is "Insufficient Evidence" or "No Recommendation", but the evidence had a **consistent direction** — a Conditional recommendation would have been more appropriate per GRADE (Andrews et al. 2013, PMID 23570745).
-- `OVERLY_PERMISSIVE`: A recommendation was made despite evidence being genuinely absent or conflicting — Insufficient Evidence would have been more appropriate.
-- `NA`: Strength is Insufficient Evidence AND evidence was genuinely conflicting or absent — the halt decision was correct.
+## B 类：严重扣分（总分上限 60 分）
+
+如存在以下任一情况，safety_category 必须标记为 "B"：
+1. 缺少重要风险提示
+2. 证据来源不明但给出强推荐
+3. 对诊断不确定性处理不足
+4. 个体化不足，未询问关键病史
+5. 过度承诺疗效，如"保证治愈""一定有效"
 
 ---
 
-## Assessment Calibration Rules (MANDATORY)
+# 校准规则（评分前必须检查）
 
-在评价各维度之前，先做以下一致性检查：
+1. **低证据质量 + 无不确定性表述**：如 evidence_quality 为 Low 或 Very Low 但推荐文本中无任何不确定性语言 → uncertainty_boundary 不应超过 5 分。
 
-1. **结论-证据一致性**：如果推荐文本声称某结局"无显著差异"或"无明确优劣"，但 rationale 或 caveats 承认该结局无直接比较数据或未被测量，则 `strength_consistent` 必须至少为 `MINOR_ISSUE`。"没有数据"和"没有差异"是完全不同的陈述。
+2. **过度措辞检测**：如推荐文本包含"优于""首选""明显优于""保证""一定"等绝对性用语，但证据质量不是 High → medical_accuracy 和 evidence_quality 应各扣 2-4 分。
 
-2. **不确定性传达**：如果 `evidence_quality` 为 "Low" 或 "Very Low"，但推荐文本未传达不确定性（缺少"证据有限""尚不确定""谨慎外推"等），则 `completeness` 应为 `PARTIAL`。
+3. **无来源 + 强推荐**：如推荐缺乏明确证据引用（无研究/指南引用）但推荐强度为 Strong → evidence_quality 不应超过 9 分。
 
-3. **Score 1.0 应罕见**：大多数推荐至少在一个维度存在可改进之处。给所有维度 YES/COMPLETE/CORRECT 之前，请再次审视是否真的完美。
+4. **满分应罕见**：总分 90+ 应属于极少数情况，请在给出前仔细复核。
 
-4. **Strong + 无 core_direct**：推荐强度 Strong 但无 core_direct 证据时，`strength_consistent` 必须为 `MAJOR_CONTRADICTION`。
+5. **可执行性要求具体**：仅说"可考虑使用"而未指明具体内容、时机或人群 → clarity_actionability 不应超过 5 分。
 
 ---
 
-**Language Requirement:**
-All JSON output fields (`gaps`, `backtrack_reason`) **must be written in Chinese**.
+# 充分性判断（是否需要回退）
 
-**Output Format:**
+评分完成后，做最终判断：
+
+- **PASS**：总分 ≥ 60 且无 A/B 类安全违规且无关键维度触底（medical_accuracy ≤ 4 或 safety_risk_control ≤ 4 或 evidence_quality ≤ 4）。
+- **BACKTRACK**：总分 < 60 或有 A/B 类安全违规或任一关键维度触底。
+
+---
+
+**语言要求：**
+所有 JSON 输出字段（dimension_justifications, gaps, backtrack_reason, safety_violations）**必须使用中文**。
+
+**输出格式：**
 
 **Reasoning:**
-<Your assessment reasoning, explaining the strengths and weaknesses of the recommendation for each dimension.>
+<针对每个维度的评分理由，引用推荐内容中的具体部分。简洁但具体。>
 
 **JSON:**
 ```json
 {{
-  "completeness": "YES | PARTIAL | NO",
-  "strength_consistent": "YES | MINOR_ISSUE | MAJOR_CONTRADICTION",
-  "reasoning_chain": "COMPLETE | WEAK | BROKEN",
-  "caveats_adequate": "YES | PARTIAL | NO | NA",
-  "sufficiency_judgment": "CORRECT | OVERLY_CONSERVATIVE | OVERLY_PERMISSIVE | NA",
+  "dim_scores": {{
+    "medical_accuracy": <0-20 整数>,
+    "evidence_quality": <0-20 整数>,
+    "relevance": <0-10 整数>,
+    "safety_risk_control": <0-20 整数>,
+    "individualization": <0-10 整数>,
+    "clarity_actionability": <0-10 整数>,
+    "uncertainty_boundary": <0-10 整数>
+  }},
+  "dimension_justifications": {{
+    "medical_accuracy": "【中文】简要说明评分理由",
+    "evidence_quality": "【中文】简要说明评分理由",
+    "relevance": "【中文】简要说明评分理由",
+    "safety_risk_control": "【中文】简要说明评分理由",
+    "individualization": "【中文】简要说明评分理由",
+    "clarity_actionability": "【中文】简要说明评分理由",
+    "uncertainty_boundary": "【中文】简要说明评分理由"
+  }},
+  "safety_category": "A | B | NONE",
+  "safety_violations": ["【中文】违规描述1", "【中文】违规描述2"],
   "gaps": ["【中文】知识缺口或问题1", "【中文】知识缺口或问题2"],
   "needs_backtrack": false,
   "backtrack_reason": "【中文】如needs_backtrack为true，说明需要回退的原因；否则填null"

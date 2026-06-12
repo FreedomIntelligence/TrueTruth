@@ -192,6 +192,10 @@ body {
 .str-consensus   { background: #2d1b4a; color: #bc8cff; }
 .str-insufficient{ background: var(--bg3); color: var(--text3); }
 
+/* ── Recommendation text (structured output) ─────────────────────── */
+.rec-text { white-space: pre-wrap; font-size: 14px; line-height: 1.7; color: var(--text1); margin: 12px 0; }
+.rec-section-body { white-space: pre-wrap; font-size: 13px; line-height: 1.6; color: var(--text2); }
+
 /* ── Lists ────────────────────────────────────────────────────────── */
 .caveat-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
 .caveat-list li { font-size: 13px; color: var(--text2); }

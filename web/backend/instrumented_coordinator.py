@@ -48,6 +48,22 @@ class InstrumentedCoordinator(Coordinator):
     def _ts(self) -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    def _render_rec_text(self, rec, state) -> str:
+        """Render rec.text through the same safety/boundary/citation renderer the
+        CLI and eval harness use, so the web answer matches the measured output.
+
+        Render-only: merges safety_evidence for citation resolution but does NOT
+        re-enter GRADE/Appraise. Falls back to raw rec.text on any error so a
+        render bug can never break the live answer stream.
+        """
+        try:
+            from src.render.recommendation import render_recommendation
+
+            ev = (state.get("evidence_list") or []) + (state.get("safety_evidence") or [])
+            return render_recommendation(rec, ev, state.get("outcome_coverage"))
+        except Exception:
+            return rec.text or ""
+
     def _emit_text_stream(self, text: str, event_type: EventType, chunk_size: int = 4) -> None:
         """Replay text as token-chunk SSE events at ~25 ms cadence.
 
@@ -92,7 +108,7 @@ class InstrumentedCoordinator(Coordinator):
             EventType.WORKFLOW_COMPLETED,
             {
                 "recommendation": {
-                    "text": rec.text,
+                    "text": self._render_rec_text(rec, state),
                     "strength": rec.strength,
                     "rationale": rec.rationale,
                     "caveats": rec.caveats,
@@ -161,7 +177,8 @@ class InstrumentedCoordinator(Coordinator):
         elif agent_name == "Apply":
             rec = result_state.get("recommendation")
             if rec and getattr(rec, "text", None):
-                self._emit_text_stream(rec.text, EventType.REC_TEXT_TOKEN)
+                rendered = self._render_rec_text(rec, result_state)
+                self._emit_text_stream(rendered, EventType.REC_TEXT_TOKEN)
 
         output = serialize_agent_output(agent_name, result_state)
         self._emit(

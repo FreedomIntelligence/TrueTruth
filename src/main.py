@@ -179,7 +179,7 @@ def _print_stage_result(stage: str, state: Dict[str, Any]) -> None:
         assess = state.get("assessment")
         if assess:
             print(f"\n{sep}")
-            print(f"[Assess] 质量评估完成  score={assess.quality_score:.2f}  backtrack={assess.needs_backtrack}")
+            print(f"[Assess] 质量评估完成  score={assess.quality_score*100:.0f}/100  backtrack={assess.needs_backtrack}")
             print(sep)
 
 
@@ -272,7 +272,7 @@ def format_output(state: Dict[str, Any]) -> str:
     if state.get("assessment"):
         assess = state["assessment"]
         output.append("QUALITY ASSESSMENT:")
-        output.append(f"  Quality Score: {assess.quality_score:.2f}/1.0")
+        output.append(f"  Quality Score: {assess.quality_score*100:.0f}/100")
         if assess.gaps:
             output.append("  Identified Gaps:")
             for gap in assess.gaps:
@@ -396,9 +396,14 @@ def format_output(state: Dict[str, Any]) -> str:
         output.append(f"   Recommendation Strength : {rec.strength}")
         output.append(f"   Evidence Quality        : {rec.evidence_quality}")
         if assess:
+            output.append("")
             output.append(
-                f"   Overall Quality Score   : {assess.quality_score:.2f} / 1.0"
+                f"   Overall Quality Score   : {assess.quality_score*100:.0f} / 100"
             )
+            if assess.dimension_scores:
+                output.append("   Dimension Scores        :")
+                for dim, label in assess.dimension_scores.items():
+                    output.append(f"     {dim}: {label}")
             if assess.gaps:
                 output.append("   Identified Gaps         :")
                 for g in assess.gaps:

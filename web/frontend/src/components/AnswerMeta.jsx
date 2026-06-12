@@ -59,15 +59,6 @@ export default function AnswerMeta({ rec, assess, directAnswer }) {
         </div>
       )}
 
-      {rec.caveats?.length > 0 && (
-        <div className="meta-section">
-          <div className="meta-label">注意事项</div>
-          <ul className="caveat-list">
-            {rec.caveats.map((c, i) => <li key={i}>{c}</li>)}
-          </ul>
-        </div>
-      )}
-
       {assess?.gaps?.length > 0 && (
         <div className="meta-section">
           <div className="meta-label">证据缺口</div>
