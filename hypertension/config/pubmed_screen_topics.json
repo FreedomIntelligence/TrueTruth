@@ -1,0 +1,62 @@
+[
+  {
+    "name": "core_hypertension_guidelines",
+    "query": "(hypertension[MeSH Terms] OR hypertension[tiab] OR \"high blood pressure\"[tiab]) AND (\"Practice Guideline\"[pt] OR guideline[ti] OR consensus[tiab] OR recommendation*[tiab])",
+    "tags": ["hypertension", "guideline", "recommendations"],
+    "special_topic": false
+  },
+  {
+    "name": "hypertension_systematic_reviews",
+    "query": "(hypertension[MeSH Terms] OR hypertension[tiab] OR antihypertensive[tiab]) AND (\"systematic review\"[pt] OR meta-analysis[pt] OR \"systematic review\"[tiab] OR meta-analysis[tiab]) AND (treatment[tiab] OR management[tiab] OR target[tiab])",
+    "tags": ["hypertension", "systematic_review", "meta_analysis"],
+    "special_topic": false
+  },
+  {
+    "name": "first_line_antihypertensive_strategy",
+    "query": "(hypertension[MeSH Terms] OR hypertension[tiab]) AND (\"first line\"[tiab] OR initial[tiab] OR monotherapy[tiab] OR combination[tiab]) AND (antihypertensive[tiab] OR \"blood pressure\"[tiab])",
+    "tags": ["hypertension", "first_line_treatment", "combination_therapy"],
+    "special_topic": false
+  },
+  {
+    "name": "blood_pressure_targets",
+    "query": "(hypertension[MeSH Terms] OR hypertension[tiab]) AND (\"blood pressure target\"[tiab] OR \"target blood pressure\"[tiab] OR intensive[tiab] OR standard[tiab]) AND (trial[tiab] OR guideline[tiab] OR meta-analysis[tiab])",
+    "tags": ["hypertension", "bp_target", "intensive_control"],
+    "special_topic": false
+  },
+  {
+    "name": "elderly_hypertension_management",
+    "query": "(hypertension[MeSH Terms] OR hypertension[tiab]) AND (elderly[tiab] OR older[tiab] OR geriatric[tiab] OR frail[tiab]) AND (treatment[tiab] OR target[tiab] OR management[tiab] OR antihypertensive[tiab])",
+    "tags": ["hypertension", "elderly", "frailty"],
+    "special_topic": false
+  },
+  {
+    "name": "hypertension_ckd_diabetes",
+    "query": "(hypertension[MeSH Terms] OR hypertension[tiab]) AND (\"chronic kidney disease\"[tiab] OR CKD[tiab] OR diabetes[tiab] OR diabetic[tiab]) AND (treatment[tiab] OR target[tiab] OR management[tiab] OR renin angiotensin[tiab])",
+    "tags": ["hypertension", "ckd", "diabetes", "comorbidity"],
+    "special_topic": false
+  },
+  {
+    "name": "resistant_hypertension_management",
+    "query": "(\"resistant hypertension\"[tiab] OR \"refractory hypertension\"[tiab]) AND (management[tiab] OR treatment[tiab] OR spironolactone[tiab] OR renal denervation[tiab] OR guideline[tiab])",
+    "tags": ["resistant_hypertension", "spironolactone", "renal_denervation"],
+    "special_topic": true
+  },
+  {
+    "name": "secondary_hypertension_screening",
+    "query": "(\"secondary hypertension\"[tiab] OR \"primary aldosteronism\"[tiab] OR \"renovascular hypertension\"[tiab] OR pheochromocytoma[tiab]) AND (screening[tiab] OR diagnosis[tiab] OR management[tiab] OR treatment[tiab])",
+    "tags": ["secondary_hypertension", "screening", "diagnosis"],
+    "special_topic": true
+  },
+  {
+    "name": "pregnancy_postpartum_hypertension",
+    "query": "(\"hypertension in pregnancy\"[tiab] OR \"gestational hypertension\"[tiab] OR preeclampsia[tiab] OR postpartum[tiab]) AND (management[tiab] OR treatment[tiab] OR antihypertensive[tiab] OR guideline[tiab])",
+    "tags": ["pregnancy_hypertension", "preeclampsia", "postpartum"],
+    "special_topic": true
+  },
+  {
+    "name": "orthostatic_supine_nocturnal_hypertension",
+    "query": "(\"supine hypertension\"[tiab] OR \"orthostatic hypotension\"[tiab] OR \"nocturnal hypertension\"[tiab] OR \"blood pressure variability\"[tiab]) AND (management[tiab] OR treatment[tiab] OR monitoring[tiab])",
+    "tags": ["supine_hypertension", "orthostatic_hypotension", "nocturnal_hypertension"],
+    "special_topic": true
+  }
+]

@@ -23,6 +23,9 @@ class NCBIClient:
         api_key = os.environ.get("NCBI_API_KEY")
         if api_key:
             kwargs["api_key"] = api_key
+        email = os.environ.get("NCBI_EMAIL") or os.environ.get("PUBMED_EMAIL")
+        if email:
+            kwargs["email"] = email
         return kwargs
 
     def esearch(self, query: str, db: str = "pubmed", retmax: int = 50) -> list[str]:
@@ -71,6 +74,16 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
         rec["journal"] = _text(art, ".//Journal/Title")
         rec["doi"] = _id_by_type(art, "doi")
         rec["pmc_id"] = _id_by_type(art, "pmc")
+        rec["publication_types"] = [
+            (el.text or "").strip()
+            for el in art.findall(".//PublicationTypeList/PublicationType")
+            if (el.text or "").strip()
+        ]
+        rec["mesh_terms"] = [
+            (el.text or "").strip()
+            for el in art.findall(".//MeshHeading/DescriptorName")
+            if (el.text or "").strip()
+        ]
 
         authors: list[str] = []
         for a in art.findall(".//AuthorList/Author"):

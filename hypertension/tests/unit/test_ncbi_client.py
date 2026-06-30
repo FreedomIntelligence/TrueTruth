@@ -29,6 +29,9 @@ _EFETCH_PUBMED_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <Abstract>
           <AbstractText>We studied combination therapy.</AbstractText>
         </Abstract>
+        <PublicationTypeList>
+          <PublicationType>Randomized Controlled Trial</PublicationType>
+        </PublicationTypeList>
         <AuthorList>
           <Author>
             <LastName>Smith</LastName>
@@ -36,6 +39,11 @@ _EFETCH_PUBMED_XML = """<?xml version="1.0" encoding="UTF-8"?>
           </Author>
         </AuthorList>
       </Article>
+      <MeshHeadingList>
+        <MeshHeading>
+          <DescriptorName>Hypertension</DescriptorName>
+        </MeshHeading>
+      </MeshHeadingList>
     </MedlineCitation>
     <PubmedData>
       <ArticleIdList>
@@ -115,6 +123,8 @@ def test_efetch_pubmed_parses_metadata(mock_http):
     assert r["authors"] == ["Smith J"]
     assert r["year"] == 2026
     assert r["journal"] == "J Hypertens"
+    assert r["publication_types"] == ["Randomized Controlled Trial"]
+    assert r["mesh_terms"] == ["Hypertension"]
 
 
 @pytest.mark.unit
@@ -138,3 +148,27 @@ def test_http_error_raises(mock_http):
     mock_http.get.return_value = mock_resp
     with pytest.raises(Exception):
         NCBIClient().esearch(query="x")
+@pytest.mark.unit
+def test_ncbi_client_params_include_email(monkeypatch):
+    monkeypatch.setenv("NCBI_EMAIL", "user@example.com")
+    monkeypatch.delenv("PUBMED_EMAIL", raising=False)
+    monkeypatch.delenv("NCBI_API_KEY", raising=False)
+    client = NCBIClient()
+
+    assert client._params(db="pubmed") == {
+        "db": "pubmed",
+        "email": "user@example.com",
+    }
+
+
+@pytest.mark.unit
+def test_ncbi_client_params_accept_pubmed_email_fallback(monkeypatch):
+    monkeypatch.delenv("NCBI_EMAIL", raising=False)
+    monkeypatch.setenv("PUBMED_EMAIL", "fallback@example.com")
+    monkeypatch.delenv("NCBI_API_KEY", raising=False)
+    client = NCBIClient()
+
+    assert client._params(db="pubmed") == {
+        "db": "pubmed",
+        "email": "fallback@example.com",
+    }

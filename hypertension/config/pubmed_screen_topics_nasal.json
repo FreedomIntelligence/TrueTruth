@@ -1,0 +1,54 @@
+[
+  {
+    "name": "chronic_rhinosinusitis",
+    "query": "(chronic rhinosinusitis OR CRS) AND (treatment OR management OR guideline OR systematic review OR randomized controlled trial)",
+    "tags": ["nasal", "chronic_rhinosinusitis", "rhinosinusitis"]
+  },
+  {
+    "name": "nasal_polyps",
+    "query": "(chronic rhinosinusitis with nasal polyps OR CRSwNP OR nasal polyps) AND (treatment OR management OR biologics OR intranasal corticosteroids OR surgery)",
+    "tags": ["nasal", "nasal_polyps", "crswnp"]
+  },
+  {
+    "name": "nasal_polyps_biologics",
+    "query": "(nasal polyps OR CRSwNP) AND (dupilumab OR omalizumab OR mepolizumab OR biologic OR biologics) AND (trial OR systematic review OR guideline)",
+    "tags": ["nasal", "nasal_polyps", "biologics"]
+  },
+  {
+    "name": "allergic_rhinitis",
+    "query": "(allergic rhinitis) AND (intranasal corticosteroids OR antihistamine OR immunotherapy OR treatment OR guideline OR systematic review)",
+    "tags": ["nasal", "allergic_rhinitis", "rhinitis"]
+  },
+  {
+    "name": "nonallergic_rhinitis",
+    "query": "(nonallergic rhinitis OR non-allergic rhinitis OR vasomotor rhinitis) AND (treatment OR management OR intranasal corticosteroids OR ipratropium)",
+    "tags": ["nasal", "nonallergic_rhinitis", "rhinitis"],
+    "special_topic": true
+  },
+  {
+    "name": "acute_bacterial_rhinosinusitis",
+    "query": "(acute bacterial rhinosinusitis OR acute sinusitis) AND (antibiotics OR treatment OR guideline OR randomized controlled trial)",
+    "tags": ["nasal", "acute_rhinosinusitis", "sinusitis"]
+  },
+  {
+    "name": "epistaxis",
+    "query": "(epistaxis OR nosebleed) AND (management OR treatment OR cautery OR packing OR tranexamic acid OR guideline)",
+    "tags": ["nasal", "epistaxis"],
+    "special_topic": true
+  },
+  {
+    "name": "nasal_obstruction_septal_deviation",
+    "query": "(nasal obstruction OR septal deviation OR turbinate hypertrophy) AND (septoplasty OR turbinate reduction OR treatment OR outcomes)",
+    "tags": ["nasal", "nasal_obstruction", "septal_deviation"]
+  },
+  {
+    "name": "endoscopic_sinus_surgery",
+    "query": "(endoscopic sinus surgery OR functional endoscopic sinus surgery OR FESS) AND (chronic rhinosinusitis OR nasal polyps) AND (outcomes OR guideline OR systematic review)",
+    "tags": ["nasal", "endoscopic_sinus_surgery", "rhinosinusitis"]
+  },
+  {
+    "name": "saline_irrigation_intranasal_steroids",
+    "query": "(saline irrigation OR intranasal corticosteroids OR intranasal steroid) AND (rhinosinusitis OR allergic rhinitis OR nasal polyps) AND (randomized controlled trial OR systematic review)",
+    "tags": ["nasal", "intranasal_corticosteroids", "saline_irrigation"]
+  }
+]
