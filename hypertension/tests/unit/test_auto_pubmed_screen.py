@@ -239,6 +239,32 @@ def test_screen_pubmed_topics_fetches_and_classifies_records():
 
 
 @pytest.mark.unit
+def test_screen_pubmed_topics_pauses_between_topics():
+    calls = []
+
+    class FakeClient:
+        def esearch(self, query, db="pubmed", retmax=50):
+            return [query]
+
+        def efetch_pubmed(self, pmids):
+            return [_record(pmid=pmids[0], doi=f"10.1000/{pmids[0]}")]
+
+    candidates = screen_pubmed_topics(
+        topics=[
+            PubMedTopic(name="topic_a", query="1001", tags=["hypertension"]),
+            PubMedTopic(name="topic_b", query="1002", tags=["hypertension"]),
+        ],
+        client=FakeClient(),
+        retmax=5,
+        request_pause_seconds=0.5,
+        sleeper=calls.append,
+    )
+
+    assert len(candidates) == 2
+    assert calls == [0.5]
+
+
+@pytest.mark.unit
 def test_write_screening_jsonl(tmp_path: Path):
     candidate = classify_pubmed_record(
         _record(),

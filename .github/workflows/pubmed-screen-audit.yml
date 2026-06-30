@@ -22,6 +22,7 @@ jobs:
         working-directory: hypertension
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - domain: hypertension
@@ -50,6 +51,7 @@ jobs:
           NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
           NCBI_EMAIL: ${{ secrets.NCBI_EMAIL }}
           RETMAX: ${{ github.event.inputs.retmax || '25' }}
+          REQUEST_PAUSE_SECONDS: "0.4"
           DOMAIN: ${{ matrix.domain }}
           TOPICS: ${{ matrix.topics }}
         run: |
@@ -63,7 +65,8 @@ jobs:
           python scripts/auto_pubmed_screen.py \
             --topics "${TOPICS}" \
             --output "${DAILY_DIR}/pubmed-screen-${DOMAIN}.jsonl" \
-            --retmax "${RETMAX}"
+            --retmax "${RETMAX}" \
+            --request-pause-seconds "${REQUEST_PAUSE_SECONDS}"
 
           python scripts/download_from_audit.py \
             --audit "${DAILY_DIR}/pubmed-screen-${DOMAIN}.jsonl" \

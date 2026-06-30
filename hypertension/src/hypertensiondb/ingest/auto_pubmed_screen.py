@@ -11,6 +11,7 @@ import argparse
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
+import time
 from typing import Any, Iterable, Protocol
 
 from hypertensiondb.ingest.ncbi_client import NCBIClient
@@ -204,12 +205,16 @@ def screen_pubmed_topics(
     topics: list[PubMedTopic],
     client: PubMedClient | None = None,
     retmax: int = 25,
+    request_pause_seconds: float = 0.0,
+    sleeper=time.sleep,
 ) -> list[ScreenedPubMedCandidate]:
     """Search PubMed topics and return classified candidate documents."""
     client = client or NCBIClient()
     all_records: list[tuple[PubMedTopic, dict[str, Any]]] = []
 
-    for topic in topics:
+    for index, topic in enumerate(topics):
+        if index > 0 and request_pause_seconds > 0:
+            sleeper(request_pause_seconds)
         pmids = client.esearch(topic.query, db="pubmed", retmax=retmax)
         records = client.efetch_pubmed(pmids)
         for record in records:
@@ -628,10 +633,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--topics", type=Path, help="JSON topic registry; defaults to built-in topics.")
     parser.add_argument("--output", type=Path, required=True, help="Screening JSONL output path.")
     parser.add_argument("--retmax", type=int, default=25, help="PubMed records per topic.")
+    parser.add_argument(
+        "--request-pause-seconds",
+        type=float,
+        default=0.0,
+        help="Pause between PubMed topic queries to avoid NCBI rate limits.",
+    )
     args = parser.parse_args(argv)
 
     topics = load_topics(args.topics) if args.topics else DEFAULT_TOPICS
-    candidates = screen_pubmed_topics(topics=topics, retmax=args.retmax)
+    candidates = screen_pubmed_topics(
+        topics=topics,
+        retmax=args.retmax,
+        request_pause_seconds=args.request_pause_seconds,
+    )
     write_screening_jsonl(candidates, args.output)
 
     tier_counts: dict[str, int] = {}

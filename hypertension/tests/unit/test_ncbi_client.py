@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+import httpx
+
 from hypertensiondb.ingest.ncbi_client import NCBIClient
 
 
@@ -125,6 +127,41 @@ def test_efetch_pubmed_parses_metadata(mock_http):
     assert r["journal"] == "J Hypertens"
     assert r["publication_types"] == ["Randomized Controlled Trial"]
     assert r["mesh_terms"] == ["Hypertension"]
+
+
+@pytest.mark.unit
+def test_efetch_pubmed_retries_transient_http_errors(mock_http):
+    first = MagicMock(status_code=429, text="rate limited")
+    first.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "429 Too Many Requests",
+        request=MagicMock(),
+        response=first,
+    )
+    second = MagicMock(status_code=200, text=_EFETCH_PUBMED_XML)
+    mock_http.get.side_effect = [first, second]
+
+    client = NCBIClient(max_retries=2, retry_sleep=lambda seconds: None)
+
+    records = client.efetch_pubmed(["39111111"])
+
+    assert records[0]["pmid"] == "39111111"
+    assert mock_http.get.call_count == 2
+
+
+@pytest.mark.unit
+def test_efetch_pubmed_error_includes_endpoint_context(mock_http):
+    response = MagicMock(status_code=500, text="server error")
+    response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "500 Server Error",
+        request=MagicMock(),
+        response=response,
+    )
+    mock_http.get.return_value = response
+
+    client = NCBIClient(max_retries=1, retry_sleep=lambda seconds: None)
+
+    with pytest.raises(RuntimeError, match="NCBI efetch pubmed failed"):
+        client.efetch_pubmed(["39111111"])
 
 
 @pytest.mark.unit

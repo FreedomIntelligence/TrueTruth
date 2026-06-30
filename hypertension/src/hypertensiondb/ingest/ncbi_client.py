@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Optional
 
 import httpx
@@ -16,8 +17,15 @@ class NCBIClient:
     Pass NCBI_API_KEY env var to get 10 req/s (vs 3 req/s without).
     """
 
-    def __init__(self, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        timeout: float = 30.0,
+        max_retries: int = 3,
+        retry_sleep=time.sleep,
+    ) -> None:
         self._timeout = timeout
+        self._max_retries = max(1, max_retries)
+        self._retry_sleep = retry_sleep
 
     def _params(self, **kwargs) -> dict:
         api_key = os.environ.get("NCBI_API_KEY")
@@ -30,39 +38,55 @@ class NCBIClient:
 
     def esearch(self, query: str, db: str = "pubmed", retmax: int = 50) -> list[str]:
         """Search and return list of IDs (PMIDs or PMCIDs)."""
-        with httpx.Client(timeout=self._timeout) as c:
-            resp = c.get(_ESEARCH_URL, params=self._params(
-                db=db, term=query, retmax=retmax, retmode="xml",
-            ))
-            resp.raise_for_status()
-        root = etree.fromstring(resp.text.encode("utf-8"))
+        text = self._get_text(
+            _ESEARCH_URL,
+            params=self._params(db=db, term=query, retmax=retmax, retmode="xml"),
+            context=f"esearch {db}",
+        )
+        root = _parse_xml(text, context=f"NCBI esearch {db}")
         return [el.text for el in root.findall(".//IdList/Id") if el.text]
 
     def efetch_pubmed(self, pmids: list[str]) -> list[dict]:
         """Fetch PubMed metadata for given PMIDs, return list of parsed dicts."""
         if not pmids:
             return []
-        with httpx.Client(timeout=self._timeout) as c:
-            resp = c.get(_EFETCH_URL, params=self._params(
-                db="pubmed", id=",".join(pmids), rettype="xml", retmode="xml",
-            ))
-            resp.raise_for_status()
-        return _parse_pubmed_xml(resp.text)
+        text = self._get_text(
+            _EFETCH_URL,
+            params=self._params(db="pubmed", id=",".join(pmids), rettype="xml", retmode="xml"),
+            context="efetch pubmed",
+        )
+        return _parse_pubmed_xml(text)
 
     def efetch_pmc_xml(self, pmc_id: str) -> str:
         """Fetch JATS XML for a PMC OA article. Accepts 'PMC9999999' or '9999999'."""
         clean_id = pmc_id.removeprefix("PMC")
-        with httpx.Client(timeout=self._timeout) as c:
-            resp = c.get(_EFETCH_URL, params=self._params(
-                db="pmc", id=clean_id, rettype="xml", retmode="xml",
-            ))
-            resp.raise_for_status()
-        return resp.text
+        return self._get_text(
+            _EFETCH_URL,
+            params=self._params(db="pmc", id=clean_id, rettype="xml", retmode="xml"),
+            context="efetch pmc",
+        )
+
+    def _get_text(self, url: str, *, params: dict, context: str) -> str:
+        last_error: Exception | None = None
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                with httpx.Client(timeout=self._timeout) as c:
+                    resp = c.get(url, params=params)
+                    resp.raise_for_status()
+                return resp.text
+            except (httpx.HTTPError, httpx.TimeoutException) as exc:
+                last_error = exc
+                if not _is_retryable(exc) or attempt >= self._max_retries:
+                    raise RuntimeError(
+                        f"NCBI {context} failed after {attempt} attempt(s): {exc}"
+                    ) from exc
+                self._retry_sleep(min(2**attempt, 10))
+        raise RuntimeError(f"NCBI {context} failed: {last_error}")
 
 
 def _parse_pubmed_xml(xml_text: str) -> list[dict]:
     """Parse the PubMed efetch XML into a list of dicts."""
-    root = etree.fromstring(xml_text.encode("utf-8"))
+    root = _parse_xml(xml_text, context="NCBI efetch pubmed")
     records: list[dict] = []
     for art in root.findall(".//PubmedArticle"):
         rec: dict = {}
@@ -100,6 +124,22 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
 
         records.append(rec)
     return records
+
+
+def _parse_xml(xml_text: str, *, context: str):
+    try:
+        return etree.fromstring(xml_text.encode("utf-8"))
+    except etree.XMLSyntaxError as exc:
+        preview = " ".join(xml_text[:200].split())
+        raise RuntimeError(f"{context} returned non-XML or malformed XML: {preview}") from exc
+
+
+def _is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in {429, 500, 502, 503, 504}
+    return False
 
 
 def _text(node, xpath: str) -> Optional[str]:
