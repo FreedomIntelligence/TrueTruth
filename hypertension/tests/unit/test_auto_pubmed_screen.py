@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,7 @@ import pytest
 from hypertensiondb.ingest.auto_pubmed_screen import (
     PubMedTopic,
     classify_pubmed_record,
+    date_window_query,
     deduplicate_records,
     load_topics,
     screen_pubmed_topics,
@@ -236,6 +238,75 @@ def test_screen_pubmed_topics_fetches_and_classifies_records():
     assert len(candidates) == 2
     assert {c.pmid for c in candidates} == {"1001", "1002"}
     assert {c.evidence_tier for c in candidates} == {"active_core", "paywalled_important"}
+
+
+@pytest.mark.unit
+def test_date_window_query_adds_rolling_publication_date_filter():
+    query = date_window_query(
+        "hypertension AND guideline",
+        lookback_days=14,
+        today=date(2026, 6, 30),
+    )
+
+    assert query == "(hypertension AND guideline) AND 2026/06/16:2026/06/30[pdat]"
+
+
+@pytest.mark.unit
+def test_screen_pubmed_topics_passes_lookback_window_to_pubmed_search():
+    queries = []
+
+    class FakeClient:
+        def esearch(self, query, db="pubmed", retmax=50):
+            queries.append(query)
+            return ["1001"]
+
+        def efetch_pubmed(self, pmids):
+            return [_record(pmid="1001")]
+
+    screen_pubmed_topics(
+        topics=[
+            PubMedTopic(
+                name="core_hypertension",
+                query="hypertension",
+                tags=["hypertension"],
+            )
+        ],
+        client=FakeClient(),
+        retmax=5,
+        lookback_days=14,
+        today=date(2026, 6, 30),
+    )
+
+    assert queries == ["(hypertension) AND 2026/06/16:2026/06/30[pdat]"]
+
+
+@pytest.mark.unit
+def test_screen_pubmed_topics_can_run_full_search_without_lookback_window():
+    queries = []
+
+    class FakeClient:
+        def esearch(self, query, db="pubmed", retmax=50):
+            queries.append(query)
+            return ["1001"]
+
+        def efetch_pubmed(self, pmids):
+            return [_record(pmid="1001")]
+
+    screen_pubmed_topics(
+        topics=[
+            PubMedTopic(
+                name="core_hypertension",
+                query="hypertension",
+                tags=["hypertension"],
+            )
+        ],
+        client=FakeClient(),
+        retmax=5,
+        lookback_days=0,
+        today=date(2026, 6, 30),
+    )
+
+    assert queries == ["hypertension"]
 
 
 @pytest.mark.unit

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict, dataclass
+from datetime import date, timedelta
 import json
 from pathlib import Path
 import time
@@ -205,6 +206,8 @@ def screen_pubmed_topics(
     topics: list[PubMedTopic],
     client: PubMedClient | None = None,
     retmax: int = 25,
+    lookback_days: int = 0,
+    today: date | None = None,
     request_pause_seconds: float = 0.0,
     sleeper=time.sleep,
 ) -> list[ScreenedPubMedCandidate]:
@@ -215,7 +218,12 @@ def screen_pubmed_topics(
     for index, topic in enumerate(topics):
         if index > 0 and request_pause_seconds > 0:
             sleeper(request_pause_seconds)
-        pmids = client.esearch(topic.query, db="pubmed", retmax=retmax)
+        query = (
+            date_window_query(topic.query, lookback_days=lookback_days, today=today)
+            if lookback_days > 0
+            else topic.query
+        )
+        pmids = client.esearch(query, db="pubmed", retmax=retmax)
         records = client.efetch_pubmed(pmids)
         for record in records:
             all_records.append((topic, record))
@@ -231,6 +239,15 @@ def screen_pubmed_topics(
         classify_pubmed_record(record, topic=topic)
         for topic, record in sorted(seen.values(), key=lambda item: _sort_record(item[1]))
     ]
+
+
+def date_window_query(query: str, *, lookback_days: int, today: date | None = None) -> str:
+    """Constrain a PubMed query to a rolling publication-date window."""
+    if lookback_days <= 0:
+        return query
+    end_date = today or date.today()
+    start_date = end_date - timedelta(days=lookback_days)
+    return f"({query}) AND {start_date:%Y/%m/%d}:{end_date:%Y/%m/%d}[pdat]"
 
 
 def classify_pubmed_record(
@@ -634,6 +651,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True, help="Screening JSONL output path.")
     parser.add_argument("--retmax", type=int, default=25, help="PubMed records per topic.")
     parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=14,
+        help="Rolling PubMed publication-date window in days; use 0 for a full search.",
+    )
+    parser.add_argument(
         "--request-pause-seconds",
         type=float,
         default=0.0,
@@ -645,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
     candidates = screen_pubmed_topics(
         topics=topics,
         retmax=args.retmax,
+        lookback_days=args.lookback_days,
         request_pause_seconds=args.request_pause_seconds,
     )
     write_screening_jsonl(candidates, args.output)
